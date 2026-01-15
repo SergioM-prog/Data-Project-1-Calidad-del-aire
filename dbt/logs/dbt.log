@@ -1,0 +1,29 @@
+[0m11:45:53.063072 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E5152746E0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E5160F3ED0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E5160F3B10>]}
+
+
+============================== 11:45:53.067398 | 5145db81-0f69-4c1d-815c-0e1bddd960ff ==============================
+[0m11:45:53.067398 [info ] [MainThread]: Running with dbt=1.11.2
+[0m11:45:53.068086 [debug] [MainThread]: running dbt with arguments {'version_check': 'True', 'no_print': 'None', 'static_parser': 'True', 'target_path': 'None', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'printer_width': '80', 'write_json': 'True', 'empty': 'None', 'log_cache_events': 'False', 'introspect': 'True', 'cache_selected_only': 'False', 'fail_fast': 'False', 'debug': 'False', 'log_format': 'default', 'partial_parse': 'True', 'send_anonymous_usage_stats': 'True', 'quiet': 'False', 'warn_error': 'None', 'profiles_dir': 'C:\\Users\\Sergio\\.dbt', 'indirect_selection': 'eager', 'invocation_command': 'dbt init air_quality_dbt', 'use_colors': 'True', 'use_experimental_parser': 'False', 'log_path': 'logs'}
+[0m11:45:53.088918 [debug] [MainThread]: Starter project path: C:\Users\Sergio\AppData\Local\Programs\Python\Python313\Lib\site-packages\dbt\include\starter_project
+[0m11:45:53.109380 [info ] [MainThread]: 
+Your new dbt project "air_quality_dbt" was created!
+
+For more information on how to configure the profiles.yml file,
+please consult the dbt documentation here:
+
+  https://docs.getdbt.com/docs/configure-your-profile
+
+One more thing:
+
+Need help? Don't hesitate to reach out to us via GitHub issues or on Slack:
+
+  https://community.getdbt.com/
+
+Happy modeling!
+
+[0m11:45:53.109983 [info ] [MainThread]: Setting up your profile.
+[0m11:47:50.007684 [info ] [MainThread]: Profile air_quality_dbt written to C:\Users\Sergio\.dbt\profiles.yml using target's profile_template.yml and your supplied values. Run 'dbt debug' to validate the connection.
+[0m11:47:50.008660 [debug] [MainThread]: Command `dbt init` succeeded at 11:47:50.008552 after 117.08 seconds
+[0m11:47:50.009011 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E517166520>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E5172F9490>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001E515F2F9B0>]}
+[0m11:47:50.009312 [debug] [MainThread]: Flushing usage events
+[0m11:47:50.671332 [debug] [MainThread]: An error was encountered while trying to flush usage events
