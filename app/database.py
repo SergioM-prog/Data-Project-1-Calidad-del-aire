@@ -17,19 +17,25 @@ def f_crear_tablas(database_url):
     cur = conn.cursor()
 
     try:
-        # Tabla para Valencia
+        # 1. Creación de esquemas (Capas de Medallón)
+        print("Creando estructura de esquemas (raw, staging, marts)...")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS raw;")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS staging;")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS marts;")
+
+        # 2. Tabla para Valencia (En esquema 'raw')
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS raw_valencia_air (
+            CREATE TABLE IF NOT EXISTS raw.valencia_air (
                 id SERIAL PRIMARY KEY,
                 station_id INTEGER NOT NULL,
-                data_raw JSONB,                    -- Aquí guardamos TODO el objeto de la estación
-                timestamp TIMESTAMP WITH TIME ZONE -- Mantenemos esto para facilitar filtros temporales
+                data_raw JSONB,
+                timestamp TIMESTAMP WITH TIME ZONE
             );
         """)
 
-        # Tabla para Madrid
+        # 3. Tabla para Madrid (ahora en esquema 'raw')
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS raw_madrid_air (
+            CREATE TABLE IF NOT EXISTS raw.madrid_air (
                 id SERIAL PRIMARY KEY,
                 station_id INTEGER,
                 data_raw JSONB,
@@ -38,9 +44,10 @@ def f_crear_tablas(database_url):
         """)
 
         conn.commit()
-        print("✅ Infraestructura JSONB preparada. El sistema es ahora 100% dinámico.")
+        print("✅ Infraestructura de esquemas y tablas RAW preparada.")
+        
     except Exception as e:
-        print(f"❌ Error creando tablas: {e}")
+        print(f"❌ Error creando infraestructura: {e}")
         conn.rollback()
         raise
     finally:
