@@ -1,0 +1,12 @@
+air_quality_dbt:
+  outputs:
+    dev:
+      dbname: air_quality_db
+      host: db
+      pass: postgres
+      port: 5432
+      schema: public
+      threads: 1
+      type: postgres
+      user: postgres
+  target: dev
