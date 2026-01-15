@@ -23,7 +23,7 @@ CITIES_CONFIG = {
     "madrid": {
         "api_url": "https://datos.madrid.es/egob/catalogo/212504-0-calidad-aire-tiempo-real.json",
         "table_name": "raw_madrid_air",
-        "active": True
+        "active": False
     },
     "pais_vasco": {
         "api_url": "https://opendata.euskadi.eus/api-air-quality/",
