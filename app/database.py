@@ -21,6 +21,7 @@ def f_crear_tablas(database_url):
         print("Creando estructura de esquemas (raw, staging, marts)...")
         cur.execute("CREATE SCHEMA IF NOT EXISTS raw;")
         cur.execute("CREATE SCHEMA IF NOT EXISTS staging;")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS intermediate;")
         cur.execute("CREATE SCHEMA IF NOT EXISTS marts;")
 
         # 2. Tabla para Valencia (En esquema 'raw')
