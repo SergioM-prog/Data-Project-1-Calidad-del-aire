@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: air_quality
+    description: "Fuentes de datos crudos recolectados mediante APIs oficiales"
+    database: air_quality_db  # Definición explícita de la base de datos
+    schema: raw            # Definición explícita del esquema
+    tables:
+      - name: valencia_air
+        description: "Tabla con los datos crudos de la API de Valencia (formato JSONB)"
+        columns:
+          - name: station_id
+            description: "Identificador único de la estación (mapeado desde objectid)"
+            tests:
+              - not_null      # Garantiza que cada medida esté asociada a una estación
+              - unique        # Evita procesar duplicados exactos de la misma carga
+
+      # - name: raw.madrid_air
+      #   description: "Tabla con los datos crudos de la API de Madrid (formato JSONB)"
+      #   columns:
+      #     - name: station_id
+      #       description: "Identificador único de la estación de Madrid"
+      #       tests:
+      #         - not_null

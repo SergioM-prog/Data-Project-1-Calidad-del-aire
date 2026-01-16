@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: fct_air_quality_daily
+    description: "Tabla de hechos con promedios diarios de calidad del aire por ciudad y estación."
+    columns:
+      - name: measure_date
+        description: "Fecha de la medición (granularidad diaria)."
+        data_tests:
+          - not_null
+      - name: city
+        description: "Nombre de la ciudad (Valencia o Madrid)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['Valencia', 'Madrid']
+      - name: daily_avg_no2
+        description: "Promedio diario de NO2 calculado a partir de las muestras horarias."
+        data_tests:
+          - not_null
+
+  - name: fct_air_quality_hourly
+    description: "Tabla de hechos con promedios horarios. Es la fuente principal para el dashboard de tiempo real."
+    columns:
+      - name: measure_hour
+        description: "Timestamp truncado a la hora exacta."
+        data_tests:
+          - not_null
+      - name: station_name
+        description: "Nombre legible de la estación de medición."
+        data_tests:
+          - not_null
+      - name: avg_no2
+        description: "Promedio de NO2 en la hora indicada."
+        data_tests:
+          - not_null

@@ -20,7 +20,7 @@ def f_run_ingestion_madrid(database_url, api_url):
             print(f"Procesando {len(mediciones)} registros de sensores de Madrid (XML)...")
 
             query_insert = """
-                INSERT INTO raw_madrid_air (station_id, data_raw, timestamp)
+                INSERT INTO raw.madrid_air (station_id, data_raw, timestamp)
                 VALUES (%s, %s, %s)
             """
 

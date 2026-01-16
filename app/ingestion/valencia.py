@@ -12,7 +12,7 @@ def f_run_ingestion_valencia(database_url, api_url):
             estaciones = data.get('results', [])
 
             query_insert = """
-                INSERT INTO raw_valencia_air (station_id, data_raw, timestamp)
+                INSERT INTO raw.valencia_air (station_id, data_raw, timestamp)
                 VALUES (%s, %s, %s)
             """
 
