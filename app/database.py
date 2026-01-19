@@ -27,10 +27,29 @@ def f_crear_tablas(database_url):
         # 2. Tabla para Valencia (En esquema 'raw')
         cur.execute("""
             CREATE TABLE IF NOT EXISTS raw.valencia_air (
+                    
                 id SERIAL PRIMARY KEY,
-                station_id INTEGER NOT NULL,
-                data_raw JSONB,
-                timestamp TIMESTAMP WITH TIME ZONE
+                ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                objectid INTEGER,
+                nombre VARCHAR(255),
+                direccion TEXT,
+                tipozona VARCHAR(100),
+                parametros TEXT,
+                mediciones TEXT,
+                so2 NUMERIC,
+                no2 NUMERIC,
+                o3 NUMERIC,
+                co NUMERIC,
+                pm10 NUMERIC,
+                pm25 NUMERIC,
+                tipoemisio VARCHAR(100),
+                fecha_carg TIMESTAMPTZ,
+                calidad_am VARCHAR(100),
+                fiwareid VARCHAR(255),
+
+                -- Campos tipo diccionario (se guardan como JSONB sin extraer nada)
+                geo_shape JSONB,
+                geo_point_2d JSONB
             );
         """)
 
