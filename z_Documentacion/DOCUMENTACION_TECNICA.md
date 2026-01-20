@@ -4,11 +4,102 @@
 
 ---
 
+## RESUMEN EJECUTIVO
+
+**Última actualización**: 20 de enero de 2026
+
+### Arquitectura Actual
+
+El proyecto implementa un pipeline de datos de calidad del aire con **arquitectura de API de barrera**:
+
+```
+API Valencia → Script Python → Backend FastAPI → PostgreSQL
+```
+
+### Servicios Activos
+
+| Servicio | Estado | Puerto | Descripción |
+|----------|--------|--------|-------------|
+| PostgreSQL | ✅ Activo | 5431 | Base de datos principal |
+| Backend API | ✅ Activo | 8000 | API de validación e ingesta (FastAPI) |
+| Ingestion Script | ✅ Activo | - | Script de extracción (ejecuta 1 vez) |
+| dbt | ❌ Inactivo | - | Transformaciones SQL (comentado) |
+| Grafana | ❌ Inactivo | 3000 | Visualización (comentado) |
+| Frontend | ❌ Inactivo | 8050 | Dashboard Dash (comentado) |
+
+### Tecnologías Principales
+
+- **Contenedores**: Docker Compose
+- **Backend**: FastAPI + Pydantic + SQLAlchemy + pandas
+- **Base de datos**: PostgreSQL 17-alpine
+- **Ingesta**: Python 3.11-slim + requests
+- **Validación**: Pydantic (tipado fuerte, validación automática)
+
+### Comandos Rápidos
+
+```bash
+# Iniciar sistema
+docker-compose up -d
+
+# Ver estado
+docker-compose ps
+
+# Ver logs
+docker-compose logs -f backend
+docker-compose logs ingestion
+
+# Conectar a BD
+psql -h localhost -p 5431 -U postgres -d air_quality_db
+
+# Detener sistema
+docker-compose down
+
+# Reset completo (BORRA DATOS)
+docker-compose down -v
+```
+
+### Accesos Principales
+
+- **Swagger UI (API Docs)**: http://localhost:8000/docs
+- **PostgreSQL**: localhost:5431
+- **Backend API Endpoint**: http://localhost:8000/api/ingest
+
+### Datos Almacenados
+
+- **Tabla**: `raw.valencia_air`
+- **Estructura**: 19 columnas estructuradas (no JSONB genérico)
+- **Contaminantes**: NO2, PM10, PM2.5, O3, CO, SO2
+- **Frecuencia**: Cada ejecución del script (manual actualmente)
+- **Fuente**: OpenDataSoft Valencia (20 estaciones por petición)
+
+---
+
 ## 1. INTRODUCCIÓN
 
-Este documento describe la arquitectura y funcionamiento de un pipeline de datos diseñado para recopilar, transformar y visualizar información sobre la calidad del aire en diversas ciudades españolas. El proyecto implementa una arquitectura de datos moderna siguiendo el patrón Medallion, utilizando tecnologías open-source como Docker, PostgreSQL, dbt y Grafana.
+Este documento describe la arquitectura y funcionamiento de un pipeline de datos diseñado para recopilar, validar y almacenar información sobre la calidad del aire en diversas ciudades españolas. El proyecto implementa una **arquitectura de API de barrera** utilizando tecnologías open-source modernas como Docker, FastAPI, PostgreSQL y Pydantic.
 
-Este pipeline automatiza el proceso completo desde la extracción de datos de APIs públicas hasta la presentación de métricas agregadas en dashboards interactivos, pasando por múltiples capas de transformación y limpieza de datos.
+### 1.1 Estado Actual del Proyecto
+
+**Arquitectura activa**:
+- ✅ **Extracción**: Script Python obtiene datos de la API de Valencia (OpenDataSoft)
+- ✅ **Validación**: Backend FastAPI valida cada campo con Pydantic
+- ✅ **Persistencia**: Datos estructurados en PostgreSQL (`raw.valencia_air`)
+- ❌ **Transformación**: dbt deshabilitado (no se requiere actualmente)
+- ❌ **Visualización**: Grafana deshabilitado (consultas SQL directas)
+
+**Flujo de datos actual**:
+```
+API Valencia → Script Python → Backend FastAPI → PostgreSQL
+```
+
+**Características principales**:
+- **Validación automática** de tipos y campos con Pydantic
+- **Seguridad en capas** con API de barrera (no acceso directo a BD)
+- **Almacenamiento estructurado** con 19 columnas tipadas
+- **Escalabilidad** horizontal del Backend y script de ingesta
+- **Documentación automática** con Swagger UI (http://localhost:8000/docs)
+
+Este pipeline automatiza el proceso de extracción, validación y almacenamiento de datos de calidad del aire, con posibilidad de activar transformaciones (dbt) y visualización (Grafana) en el futuro.
 
 ---
 
@@ -17,17 +108,23 @@ Este pipeline automatiza el proceso completo desde la extracción de datos de AP
 El sistema sigue un flujo de datos secuencial que comienza con la extracción de información desde APIs públicas y procesa los datos a través de múltiples capas de transformación:
 
 ```
-APIs Públicas → Aplicación Python → PostgreSQL → dbt
+APIs Públicas → Script Ingesta Python → Backend API (FastAPI) → PostgreSQL → dbt (Deshabilitado)
 ```
 
-**Nota**: El sistema incluye soporte para una capa de visualización con Grafana, actualmente deshabilitada. El proyecto se enfoca en el pipeline ETL core (Extracción, Transformación y Carga de datos).
+**Arquitectura actual**: El sistema implementa una **API de barrera (Barrier API)** con FastAPI que actúa como capa de protección entre el script de ingesta y la base de datos. Esto proporciona:
+- **Validación de datos**: Pydantic valida cada campo antes de la inserción
+- **Seguridad**: Aislamiento del acceso directo a la base de datos
+- **Escalabilidad**: Múltiples clientes pueden usar la API sin acceso directo a PostgreSQL
+- **Trazabilidad**: Logs centralizados de todas las operaciones
 
-La arquitectura implementa el patrón Medallion con cuatro capas claramente diferenciadas:
+**Nota**: El servicio dbt está actualmente deshabilitado. El sistema se enfoca en la ingesta de datos validados directamente en columnas estructuradas de PostgreSQL.
 
-- **Raw**: Almacenamiento de datos crudos sin procesar, tal como llegan desde las APIs externas
-- **Staging**: Primera capa de limpieza donde se extraen y tipifican los campos del JSON
-- **Intermediate**: Unificación de múltiples fuentes de datos en una estructura común
-- **Marts**: Tablas analíticas agregadas y optimizadas para consultas de negocio
+La base de datos está preparada para implementar el patrón Medallion con cuatro capas:
+
+- **Raw**: Almacenamiento de datos en columnas estructuradas (actualmente activo)
+- **Staging**: Preparado para vistas SQL de limpieza (deshabilitado)
+- **Intermediate**: Preparado para unificación de fuentes (deshabilitado)
+- **Marts**: Preparado para tablas analíticas agregadas (deshabilitado)
 
 ### 2.1 Diagramas de Arquitectura
 
@@ -35,28 +132,29 @@ La arquitectura implementa el patrón Medallion con cuatro capas claramente dife
 
 ```mermaid
 graph LR
-    A[Valencia API] --> B[Python Ingestion App]
-    B --> C[(PostgreSQL)]
-    C --> D[dbt Transformations]
-    D --> C
-    C -.-> E[Grafana - Disabled]
+    A[Valencia API] --> B[Python Ingestion Script]
+    B -->|POST /api/ingest| C[Backend API - FastAPI]
+    C --> D[(PostgreSQL)]
+    D -.-> E[dbt - Disabled]
+    D -.-> F[Grafana - Disabled]
     style E stroke-dasharray: 5 5
+    style F stroke-dasharray: 5 5
 ```
 
-#### 2.1.2 Flujo de Datos - Patrón Medallion
+#### 2.1.2 Flujo de Datos Actual
 
 ```mermaid
 graph TD
-    A[External APIs] --> B[raw schema - JSONB]
-    B --> C[staging schema - Views]
-    C --> D[intermediate schema - Tables]
-    D --> E[marts schema - Aggregated Tables]
-    E --> F[Visualization Layer]
+    A[Valencia API] --> B[Ingestion Script]
+    B --> C[Backend API]
+    C -->|Validación Pydantic| D[raw.valencia_air - Columnas Estructuradas]
+    D -.-> E[staging - Preparado pero inactivo]
+    E -.-> F[intermediate - Preparado pero inactivo]
+    F -.-> G[marts - Preparado pero inactivo]
 
-    B -->|"valencia_air<br/>madrid_air"| B
-    C -->|"stg_valencia_air"| C
-    D -->|"int_air_quality_union"| D
-    E -->|"fct_air_quality_daily<br/>fct_air_quality_hourly"| E
+    style E stroke-dasharray: 5 5
+    style F stroke-dasharray: 5 5
+    style G stroke-dasharray: 5 5
 ```
 
 #### 2.1.3 Interacción de Servicios Docker
@@ -65,32 +163,33 @@ graph TD
 graph TD
     subgraph "Servicios Activos"
         DB[(PostgreSQL:5431)]
-        APP[Python Ingestion]
-        DBT[dbt Loop]
+        BE[Backend API:8000]
+        ING[Ingestion Script]
     end
 
     subgraph "Servicios Inactivos"
+        DBT[dbt]
         GRF[Grafana:3000]
-        BE[Backend API:8000]
         FE[Frontend:8050]
     end
 
-    APP -->|depends_on| DB
-    DBT -->|depends_on| APP
+    ING -->|depends_on| DB
+    BE -->|depends_on| DB
+    ING -->|HTTP POST| BE
+    DBT -.->|depends_on| ING
     GRF -.->|depends_on| DB
-    BE -.->|depends_on| DB
     FE -.->|depends_on| BE
 
+    style DBT stroke-dasharray: 5 5
     style GRF stroke-dasharray: 5 5
-    style BE stroke-dasharray: 5 5
     style FE stroke-dasharray: 5 5
 ```
 
 **Leyenda**:
 - Líneas sólidas (→): Servicios activos y sus dependencias
 - Líneas punteadas (-.->): Servicios deshabilitados
-- Servicios activos: db, app, dbt
-- Servicios inactivos: grafana, backend, frontend
+- **Servicios activos**: db, backend, ingestion
+- **Servicios inactivos**: dbt, grafana, frontend
 
 ---
 
@@ -98,7 +197,7 @@ graph TD
 
 ### 3.1 Base de Datos PostgreSQL
 
-**Ubicación en docker-compose**: Líneas 2-8
+**Ubicación en docker-compose**: Servicio `db` (líneas 2-8)
 
 La base de datos PostgreSQL actúa como repositorio central de información para todo el pipeline. Se utiliza la versión 17-alpine, que es una distribución ligera basada en Alpine Linux que reduce el tamaño de la imagen Docker manteniendo toda la funcionalidad necesaria.
 
@@ -107,39 +206,57 @@ La base de datos PostgreSQL actúa como repositorio central de información para
 - Puerto expuesto: 5431 (puerto del host que mapea al puerto interno 5432 del contenedor)
 - Base de datos: air_quality_db
 - Usuario: postgres
-- Contraseña: postgres (definida en archivo .env para facilitar cambios sin modificar código)
+- Contraseña: postgres (definida en archivo .env)
+- Política de reinicio: unless-stopped (se reinicia automáticamente excepto si se detiene manualmente)
 
 **Razón del puerto 5431**: Se utiliza un puerto diferente al estándar (5432) para evitar conflictos si el desarrollador tiene otra instancia de PostgreSQL corriendo localmente en su máquina.
 
 **Estructura de esquemas**:
 
-La base de datos se organiza en cuatro esquemas según la arquitectura Medallion. Esta separación permite un procesamiento en capas donde cada nivel tiene una responsabilidad específica:
+La base de datos está preparada con cuatro esquemas para soportar la arquitectura Medallion, aunque actualmente solo se usa el esquema raw:
 
-1. **raw**: Contiene las tablas con datos crudos en formato JSONB tal como llegan desde las APIs. No se aplica ninguna transformación, lo que garantiza que siempre tengamos acceso a los datos originales para auditoría o reprocesamiento. Actualmente incluye:
-   - `raw.valencia_air`: Datos de estaciones de Valencia
-   - `raw.madrid_air`: Datos de estaciones de Madrid (inactiva actualmente)
+1. **raw** (ACTIVO): Contiene la tabla `valencia_air` con columnas estructuradas:
+   - `id`: Clave primaria autoincrementable (SERIAL)
+   - `ingested_at`: Timestamp de cuándo se insertó el registro (TIMESTAMPTZ, automático)
+   - `objectid`: ID único de la estación (INTEGER)
+   - `nombre`: Nombre de la estación (VARCHAR 255)
+   - `direccion`: Dirección física de la estación (TEXT)
+   - `tipozona`: Tipo de zona (urbana, suburbana, etc.) (VARCHAR 100)
+   - `parametros`: Parámetros medidos (TEXT)
+   - `mediciones`: Información sobre mediciones (TEXT)
+   - Contaminantes: `so2`, `no2`, `o3`, `co`, `pm10`, `pm25` (NUMERIC - permiten nulos)
+   - `tipoemisio`: Tipo de emisión (VARCHAR 100)
+   - `fecha_carg`: Fecha/hora de la medición (TIMESTAMPTZ)
+   - `calidad_am`: Estado de calidad del aire (VARCHAR 100)
+   - `fiwareid`: Identificador FIWARE (VARCHAR 255)
+   - `geo_shape`: Geometría de la estación (JSONB)
+   - `geo_point_2d`: Coordenadas punto 2D (JSONB)
 
-2. **staging**: Almacena vistas SQL que extraen campos específicos del JSONB y los tipifican correctamente (FLOAT para números, TIMESTAMP para fechas, TEXT para cadenas). Las vistas no duplican datos, solo proporcionan una forma estructurada de acceder a ellos.
+2. **staging** (PREPARADO): Esquema creado pero sin vistas activas. Preparado para transformaciones dbt.
 
-3. **intermediate**: Contiene tablas físicas que unifican datos de múltiples ciudades en una estructura común. Esta capa añade la columna `city` para identificar el origen de cada registro y normaliza los nombres de campos entre diferentes fuentes.
+3. **intermediate** (PREPARADO): Esquema creado pero sin tablas activas. Preparado para unificación de fuentes.
 
-4. **marts**: Tablas analíticas agregadas por diferentes dimensiones temporales (diario, horario). Estas tablas están optimizadas para consultas de negocio, calculando promedios, máximos y otras métricas relevantes.
+4. **marts** (PREPARADO): Esquema creado pero sin tablas activas. Preparado para tablas analíticas agregadas.
 
 ---
 
-### 3.2 Aplicación de Ingestión (Python)
+### 3.2 Script de Ingestión (Python)
 
-**Ubicación**: Directorio `app/`
-**Configuración en docker-compose**: Líneas 10-20
+**Ubicación**: Directorio `ingestion/`
+**Configuración en docker-compose**: Servicio `ingestion` (líneas 10-20)
 
-La aplicación de ingestión es el primer componente del pipeline. Su responsabilidad es extraer datos desde las APIs públicas gubernamentales e insertarlos en la capa raw de la base de datos sin aplicar ninguna transformación. Está construida en Python 3 y organizada en módulos especializados siguiendo el principio de separación de responsabilidades.
+El script de ingestión es el primer componente del pipeline. Su responsabilidad es:
+1. Extraer datos desde las APIs públicas gubernamentales
+2. Enviar los datos a la API de barrera (Backend) mediante HTTP POST
+3. El Backend valida los datos y los inserta en PostgreSQL
 
-**Modelo de ejecución**: La aplicación se ejecuta una sola vez y termina (no tiene política de reinicio automático). Para automatizar la ingesta periódica, se requiere configuración adicional (ver sección 9.2).
+Está construido en Python 3.11 (imagen slim) y organizado en módulos especializados siguiendo el principio de separación de responsabilidades.
+
+**Modelo de ejecución**: El script se ejecuta una sola vez y termina (no tiene política de reinicio automático). Docker lo ejecuta con `CMD ["python","main.py"]`. Para automatizar la ingesta periódica, se requiere configuración adicional (ver sección 9.2).
 
 **Tecnologías utilizadas**:
-- `psycopg`: Librería moderna de PostgreSQL para Python (versión 3)
-- `requests`: Para realizar peticiones HTTP a las APIs
-- `xml.etree.ElementTree`: Para parsear respuestas XML de la API de Madrid
+- `requests`: Para realizar peticiones HTTP a las APIs públicas y al Backend
+- `python:3.11-slim`: Imagen base ligera de Docker
 
 #### 3.2.1 Módulo config.py
 
@@ -147,52 +264,34 @@ Este archivo centraliza toda la configuración del sistema en un único punto, l
 
 **Responsabilidades principales**:
 - Lectura de variables de entorno desde el archivo `.env` usando `os.getenv()`
-- Construcción de la cadena de conexión a PostgreSQL con formato URI
 - Definición del diccionario `CITIES_CONFIG` que actúa como registro de ciudades disponibles
+- Configuración de URL de la API de barrera (Backend)
+- Parámetros globales de ingesta (reintentos, timeouts)
 
 **Estructura del diccionario CITIES_CONFIG**:
 
 Cada ciudad tiene tres propiedades obligatorias:
 - `api_url`: URL completa de la API pública de la ciudad
-- `table_name`: Nombre de la tabla en el esquema raw donde se almacenarán los datos
+- `table_name`: Nombre de referencia de la tabla (usado para logging)
 - `active`: Booleano que controla si la ciudad se procesa en esta ejecución
+
+**Variables importantes**:
+- `BARRIER_API_URL`: URL del endpoint de ingesta del backend (ejemplo: `http://backend:8000/api/ingest`)
+- `RETRY_ATTEMPTS`: Número de reintentos para llamadas HTTP (3)
+- `TIMEOUT_SECONDS`: Timeout para peticiones HTTP (10 segundos)
 
 **Estado actual de ciudades**:
 - **Valencia**: Activa (`active: True`) - Se está ingiriendo datos actualmente
-- **Madrid**: Inactiva (`active: False`) - Implementada pero desactivada temporalmente
+  - API: OpenDataSoft Valencia (API v2.1)
+  - Límite: 20 registros por petición
+- **Madrid**: Inactiva (`active: False`) - Estructura definida, pendiente de implementación
+  - API: datos.madrid.es
 - **País Vasco**: Inactiva (`active: False`) - Estructura definida, pendiente de implementación
+  - API: opendata.euskadi.eus
 
 Esta arquitectura permite activar o desactivar ciudades cambiando un solo valor, sin necesidad de modificar código.
 
-#### 3.2.2 Módulo database.py
-
-Encapsula toda la lógica relacionada con la base de datos, proporcionando funciones reutilizables para conexión y creación de infraestructura.
-
-**Función f_conexion_bd(db_url, db_nombre)**:
-
-Esta función establece una conexión robusta a PostgreSQL con manejo de errores.
-
-- Recibe la URL de conexión y un nombre descriptivo para logging
-- Implementa lógica de reintentos: 10 intentos con pausas de 2 segundos entre cada uno
-- Esto es crucial en Docker, donde PostgreSQL puede tardar varios segundos en estar completamente listo
-- Retorna un objeto de conexión si tiene éxito
-- Lanza una excepción `RuntimeError` si falla tras todos los intentos
-
-**Función f_crear_tablas(database_url)**:
-
-Esta función asegura que la infraestructura de base de datos exista antes de comenzar la ingesta.
-
-- Se ejecuta al inicio de cada ejecución del orquestador
-- Crea los cuatro esquemas (raw, staging, intermediate, marts) si no existen usando `CREATE SCHEMA IF NOT EXISTS`
-- Crea las tablas raw para cada ciudad con la estructura estándar:
-  - `id`: Clave primaria autoincrementable (SERIAL)
-  - `station_id`: Identificador de la estación de medición (INTEGER)
-  - `data_raw`: Campo JSONB que almacena el payload completo de la API sin modificar
-  - `timestamp`: Marca temporal de la medición (TIMESTAMP WITH TIME ZONE)
-
-El uso de `IF NOT EXISTS` hace que la función sea idempotente: se puede ejecutar múltiples veces sin causar errores.
-
-#### 3.2.3 Módulo utils.py
+#### 3.2.2 Módulo utils.py
 
 Contiene funciones auxiliares reutilizables que se usan en múltiples partes del proyecto.
 
@@ -201,7 +300,8 @@ Contiene funciones auxiliares reutilizables que se usan en múltiples partes del
 Esta función encapsula la lógica de llamadas HTTP con manejo robusto de errores.
 
 - Realiza peticiones HTTP GET a las APIs públicas
-- Implementa reintentos automáticos: 10 intentos con pausas de 2 segundos
+- Usa los parámetros globales `RETRY_ATTEMPTS` y `TIMEOUT_SECONDS` definidos en config.py
+- Implementa reintentos automáticos con pausas de 2 segundos entre intentos
 - Esto hace el sistema resiliente ante caídas temporales de las APIs externas o problemas de red
 - Captura excepciones de tipo `requests.exceptions.RequestException` que incluyen timeouts, errores de conexión, etc.
 - Registra cada intento fallido en consola para facilitar el debugging
@@ -210,9 +310,10 @@ Esta función encapsula la lógica de llamadas HTTP con manejo robusto de errore
 
 Esta función es crítica porque las APIs externas pueden tener intermitencias, especialmente las gubernamentales que no están diseñadas para alta disponibilidad.
 
-#### 3.2.4 Módulo main.py (Orquestador)
 
-Este es el punto de entrada principal de la aplicación. Contiene la función `orquestador()` que coordina todo el proceso de ingestión de forma secuencial y controlada.
+#### 3.2.3 Módulo main.py (Orquestador)
+
+Este es el punto de entrada principal del script. Contiene la función `orquestador()` que coordina todo el proceso de ingestión de forma secuencial y controlada.
 
 **Diccionario INGESTION_MAP**:
 
@@ -220,54 +321,63 @@ Mapea nombres de ciudades con sus funciones específicas de ingestión. Este pat
 ```python
 INGESTION_MAP = {
     "valencia": f_run_ingestion_valencia,
-    "madrid": f_run_ingestion_madrid,
+    # "madrid": f_run_ingestion_madrid,  # Comentada, pendiente de activar
 }
 ```
 
 **Flujo de ejecución detallado**:
 
 1. **Espera inicial (5 segundos)**:
-   - Pausa deliberada para asegurar que PostgreSQL ha arrancado completamente en Docker
-   - En Docker Compose, aunque `depends_on` establece orden de inicio, no garantiza que el servicio esté listo para aceptar conexiones
+   - Pausa deliberada para asegurar que PostgreSQL y el Backend han arrancado completamente en Docker
+   - En Docker Compose, aunque `depends_on` establece orden de inicio, no garantiza que los servicios estén listos para aceptar conexiones
    - Esta espera evita errores de conexión en el primer intento
 
-2. **Verificación de infraestructura**:
-   - Llama a `f_crear_tablas()` para crear esquemas y tablas si no existen
-   - Si esta etapa falla, se detiene toda la ejecución con `return` porque no tiene sentido continuar sin base de datos
-
-3. **Iteración sobre ciudades configuradas**:
+2. **Iteración sobre ciudades configuradas**:
    - Recorre el diccionario `CITIES_CONFIG` obtenido desde config.py
    - Para cada ciudad, verifica la propiedad `active`
    - Solo procesa ciudades con `active: True`, saltando las demás
+   - Imprime en consola qué ciudad está procesando
 
-4. **Resolución de función mediante mapeo**:
+3. **Resolución de función mediante mapeo**:
    - Busca la función correspondiente en `INGESTION_MAP` usando el nombre de la ciudad como clave
    - Si no encuentra la función, registra un error pero continúa con la siguiente ciudad
    - Este diseño permite tener ciudades configuradas aunque aún no tengan implementación
 
-5. **Ejecución de ingesta específica**:
-   - Ejecuta la función de ingesta pasando `DATABASE_URL` y la `api_url` de la ciudad
+4. **Ejecución de ingesta específica**:
+   - Ejecuta la función de ingesta pasando dos parámetros:
+     - `api_url`: URL de la API pública de la ciudad
+     - `BARRIER_API_URL`: URL del endpoint de ingesta del Backend
    - La función se ejecuta dentro de un bloque try-except
 
-6. **Manejo de errores resiliente**:
+5. **Manejo de errores resiliente**:
    - Si una ciudad falla, captura la excepción, registra el error en logs pero continúa con las siguientes
    - Esto evita que un problema en una ciudad detenga la ingesta de las demás
    - Implementa el principio de "fail gracefully"
 
-#### 3.2.5 Módulo ingestion/valencia.py
+6. **Finalización**:
+   - Imprime mensaje de finalización del proceso
+   - El contenedor termina con código de salida 0 si todo fue exitoso
 
-Implementa la lógica específica para extraer datos de la API de Valencia que proporciona información sobre estaciones de contaminación atmosférica.
+#### 3.2.4 Módulo ciudades/valencia.py
 
-**Formato de la API**: La API de Valencia retorna JSON con la siguiente estructura:
+Implementa la lógica específica para extraer datos de la API de Valencia y enviarlos al Backend.
+
+**Ubicación**: `ingestion/ciudades/valencia.py`
+
+**Formato de la API de Valencia**: La API retorna JSON con la siguiente estructura:
 ```json
 {
   "results": [
     {
       "objectid": 123,
       "nombre": "Nombre de la estación",
+      "direccion": "Calle ejemplo",
       "no2": 25.5,
       "pm10": 30.2,
+      "pm25": 15.3,
       "fecha_carg": "2024-01-19T10:30:00Z",
+      "geo_shape": {...},
+      "geo_point_2d": {...},
       ...otros campos...
     }
   ]
@@ -276,78 +386,298 @@ Implementa la lógica específica para extraer datos de la API de Valencia que p
 
 **Proceso de ingesta paso a paso**:
 
-1. **Conexión a base de datos**: Establece conexión usando `f_conexion_bd()`
+1. **Llamada a la API pública**:
+   - Usa `f_llamada_api()` para obtener datos de Valencia
+   - URL: OpenDataSoft Valencia API v2.1
+   - Límite: 20 registros por petición
 
-2. **Llamada a la API**: Realiza petición GET a través de `f_llamada_api()`
+2. **Parsing de respuesta**:
+   - Convierte la respuesta HTTP a diccionario Python con `.json()`
+   - Extrae el array de estaciones desde `data.get('results', [])`
 
-3. **Parsing de respuesta**: Convierte la respuesta HTTP a diccionario Python con `.json()`
+3. **Validación básica**:
+   - Verifica que el array no esté vacío
+   - Si está vacío, registra advertencia y termina
 
-4. **Extracción del array de estaciones**: Obtiene la lista de estaciones desde `data.get('results', [])`
+4. **Envío al Backend (API de Barrera)**:
+   - Realiza POST a `barrier_api_url` (ejemplo: `http://backend:8000/api/ingest`)
+   - Envía la lista completa de estaciones como JSON
+   - El Backend con FastAPI valida automáticamente con Pydantic
 
-5. **Inserción iterativa**: Para cada estación en el array:
-   - Extrae `objectid` como identificador único de la estación
-   - Guarda el objeto JSON completo en el campo `data_raw` usando el tipo `Json()` de psycopg
-   - Extrae el timestamp desde el campo `fecha_carg`
-   - Ejecuta INSERT en la tabla `raw.valencia_air`
+5. **Verificación del resultado**:
+   - Si el status code es 201: Éxito, imprime mensaje de confirmación
+   - Si es otro código: Error, imprime el status y el mensaje de error del Backend
 
-6. **Confirmación de transacción**: Si todas las inserciones son exitosas, ejecuta `connection.commit()`
-
-7. **Rollback en caso de error**: Si cualquier inserción falla, ejecuta `connection.rollback()` para deshacer todos los cambios
+6. **Manejo de errores**:
+   - Captura cualquier excepción durante el proceso
+   - Registra el error y re-lanza la excepción para que el orquestador la maneje
 
 **Aspectos técnicos importantes**:
-- Usa `Json()` de psycopg para manejar correctamente el tipo JSONB de PostgreSQL
-- El cursor se usa dentro de un context manager (`with`) que lo cierra automáticamente
-- El bloque `finally` garantiza que la conexión se cierre incluso si hay errores
-- Todas las inserciones ocurren en una sola transacción: o se guardan todas o ninguna
+- **Desacoplamiento**: El script de ingesta NO conecta directamente a PostgreSQL
+- **Validación remota**: Toda la validación de datos ocurre en el Backend con Pydantic
+- **Simplicidad**: La función solo hace GET a la API pública y POST al Backend
+- **Resiliencia**: Los errores de red se manejan con reintentos en `f_llamada_api()`
 
-#### 3.2.6 Módulo ingestion/madrid.py
+### 3.3 Backend API de Barrera (FastAPI)
 
-Implementa la lógica para extraer datos de la API de Madrid, que a diferencia de Valencia, retorna XML en lugar de JSON. Actualmente está implementada pero inactiva (`active: False` en config.py).
+**Ubicación**: Directorio `backend/`
+**Configuración en docker-compose**: Servicio `backend` (líneas 54-62)
 
-**Formato de la API**: La API de Madrid retorna XML con esta estructura:
-```xml
-<response>
-  <medicion>
-    <punto_muestreo>28079004_8_16</punto_muestreo>
-    <fecha>2024-01-19</fecha>
-    <hora>10</hora>
-    <valor>25.5</valor>
-    ...otros campos...
-  </medicion>
-</response>
+El Backend API es una **API de barrera** construida con FastAPI que actúa como capa de protección entre el script de ingesta y la base de datos PostgreSQL. Es el componente central de la arquitectura actual del proyecto.
+
+**Propósito y ventajas**:
+
+1. **Seguridad**: Aislamiento del acceso directo a la base de datos
+2. **Validación**: Pydantic valida automáticamente cada campo antes de la inserción
+3. **Trazabilidad**: Logs centralizados de todas las operaciones de ingesta
+4. **Escalabilidad**: Múltiples clientes pueden enviar datos sin credenciales de BD
+5. **Mantenibilidad**: Cambios en el esquema de BD solo requieren actualizar el Backend
+6. **Documentación automática**: Swagger UI generado automáticamente por FastAPI
+
+**Configuración del servicio**:
+- Framework: FastAPI (Python)
+- Puerto expuesto: 8000
+- Acceso: http://localhost:8000/docs (Swagger UI)
+- Base de datos: Conexión a PostgreSQL mediante SQLAlchemy
+- Política de reinicio: unless-stopped
+
+#### 3.3.1 Arquitectura del Backend
+
+**Módulo config.py**:
+- Configura el `engine` de SQLAlchemy para conectar a PostgreSQL
+- Lee variables de entorno desde `.env`
+- Construye la URL de conexión: `postgresql://{user}:{password}@{host}:{port}/{database}`
+
+**Módulo database.py**:
+
+Contiene la función `init_db()` que inicializa la infraestructura de base de datos:
+
+1. **Lógica de reintentos (10 intentos)**:
+   - Crucial en Docker donde PostgreSQL puede tardar en estar listo
+   - Pausa de 2 segundos entre intentos
+
+2. **Creación de esquemas**:
+   - `CREATE SCHEMA IF NOT EXISTS raw;`
+   - `CREATE SCHEMA IF NOT EXISTS staging;`
+   - `CREATE SCHEMA IF NOT EXISTS intermediate;`
+   - `CREATE SCHEMA IF NOT EXISTS marts;`
+
+3. **Creación de tabla raw.valencia_air**:
+   - 19 columnas estructuradas (sin JSONB genérico)
+   - Columnas para cada contaminante: so2, no2, o3, co, pm10, pm25 (NUMERIC)
+   - Columnas geográficas: geo_shape, geo_point_2d (JSONB)
+   - Timestamp automático: ingested_at (TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)
+
+4. **Idempotencia**:
+   - Usa `IF NOT EXISTS` en todas las operaciones
+   - Se puede ejecutar múltiples veces sin errores
+
+**Módulo main.py (API)**:
+
+Define la API FastAPI con endpoints y modelos de validación.
+
+#### 3.3.2 Modelo de Datos Pydantic
+
+**Clase AirQualityInbound**:
+
+Modelo Pydantic que define exactamente qué campos se esperan del JSON de Valencia:
+
+```python
+class AirQualityInbound(BaseModel):
+    # Identificadores (Obligatorios)
+    objectid: int
+    fiwareid: str
+    nombre: str
+    direccion: str
+
+    # Contexto de la zona
+    tipozona: str
+    tipoemisio: str
+    calidad_am: str
+    fecha_carg: str
+
+    # Parámetros descriptivos (Opcionales)
+    parametros: Optional[str] = None
+    mediciones: Optional[str] = None
+
+    # Contaminantes (Opcionales)
+    so2: Optional[float] = None
+    no2: Optional[float] = None
+    o3: Optional[float] = None
+    co: Optional[float] = None
+    pm10: Optional[float] = None
+    pm25: Optional[float] = None
+
+    # Geografía (Diccionarios genéricos)
+    geo_shape: Dict[str, Any]
+    geo_point_2d: Dict[str, Any]
+
+    # Configuración de seguridad
+    model_config = ConfigDict(extra='forbid')
 ```
 
-**Diferencias clave con Valencia**:
+**Características de seguridad**:
+- `extra='forbid'`: Rechaza cualquier campo no declarado en el modelo
+- Previene inyección de campos maliciosos
+- Garantiza que solo se procesen datos esperados
 
-1. **Parsing XML**: Utiliza `xml.etree.ElementTree` para parsear el contenido XML en lugar de `.json()`
+**Tipos de datos**:
+- Obligatorios: Sin `Optional`, causan error 422 si faltan
+- Opcionales: Con `Optional[tipo] = None`, permiten valores nulos
+- Tipado fuerte: FastAPI valida tipos automáticamente
 
-2. **Extracción de elementos**: Busca todos los elementos `<medicion>` usando `root.findall('medicion')`
+#### 3.3.3 Endpoint de Ingesta
 
-3. **Conversión a diccionario**: Para cada elemento `<medicion>`, extrae todos sus hijos y los convierte a un diccionario Python:
+**POST /api/ingest**
+
+Endpoint principal que recibe datos del script de ingesta.
+
+**Flujo de procesamiento**:
+
+1. **Recepción y validación automática**:
    ```python
-   data_dict = {child.tag: child.text for child in med}
+   @app.post("/api/ingest", status_code=201)
+   async def ingest_air_data(data: list[AirQualityInbound]):
+   ```
+   - Recibe lista de objetos `AirQualityInbound`
+   - Pydantic valida cada objeto automáticamente
+   - Si falla validación, retorna HTTP 422 con detalles del error
+
+2. **Conversión a DataFrame**:
+   ```python
+   payload = [item.model_dump() for item in data]
+   df = pd.DataFrame(payload)
+   ```
+   - Convierte modelos Pydantic a diccionarios
+   - Crea DataFrame de pandas para inserción eficiente
+
+3. **Inserción en PostgreSQL**:
+   ```python
+   df.to_sql(
+       'valencia_air',
+       engine,
+       schema='raw',
+       if_exists='append',
+       index=False,
+       dtype={
+           'geo_shape': types.JSON,
+           'geo_point_2d': types.JSON,
+           'fecha_carg': types.DateTime(timezone=True)
+       }
+   )
+   ```
+   - Usa SQLAlchemy para inserción masiva
+   - `if_exists='append'`: Añade registros sin borrar existentes
+   - Tipado explícito para JSONB y TIMESTAMPTZ
+
+4. **Respuesta exitosa**:
+   ```json
+   {
+     "status": "success",
+     "message": "Se han insertado 20 registros en columnas independientes."
+   }
    ```
 
-4. **Extracción del station_id**: El identificador de estación está codificado en el campo `punto_muestreo` con formato `estacion_magnitud_tecnica` (ejemplo: `28079004_8_16`). Se extrae dividiendo por `_` y tomando el primer elemento:
-   ```python
-   station_id = punto_muestreo.split('_')[0]  # Resultado: "28079004"
-   ```
+5. **Manejo de errores**:
+   - Captura cualquier excepción durante la inserción
+   - Retorna HTTP 500 con mensaje de error
+   - Registra error en logs del contenedor
 
-5. **Construcción del timestamp**: La fecha y hora vienen en campos separados, se concatenan para formar un timestamp válido:
-   ```python
-   timestamp_str = f"{fecha} {hora}:00"  # Resultado: "2024-01-19 10:00"
-   ```
+#### 3.3.4 Ciclo de Vida de la API
 
-El resto del proceso es idéntico a Valencia: se inserta el diccionario en formato JSONB en `raw.madrid_air` y se confirma la transacción.
+**Función lifespan**:
+
+FastAPI ejecuta código al arrancar y apagar el contenedor:
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- AL ARRANCAR ---
+    try:
+        init_db()  # Crea esquemas y tablas
+    except Exception as e:
+        print(f"❌ Error inicializando BD: {e}")
+
+    yield  # Pausa: la API está corriendo
+
+    # --- AL APAGAR ---
+    # (Aquí se pueden cerrar conexiones, etc.)
+```
+
+**Ventajas**:
+- Garantiza que la BD esté lista antes de aceptar peticiones
+- Manejo centralizado de inicialización
+- Logs claros de errores de arranque
+
+#### 3.3.5 Documentación Automática
+
+FastAPI genera documentación interactiva automáticamente:
+
+**Swagger UI**: http://localhost:8000/docs
+- Interfaz visual para probar endpoints
+- Muestra modelos de datos, parámetros, respuestas
+- Permite ejecutar peticiones de prueba
+
+**ReDoc**: http://localhost:8000/redoc (endpoint comentado actualmente)
+- Documentación alternativa más limpia
+- Ideal para compartir con usuarios finales
+
+**Metadatos de la API**:
+```python
+app = FastAPI(
+    lifespan=lifespan,
+    title="Air Quality Barrier API",
+    description="API de aislamiento para proteger el acceso a air_quality_db",
+    version="1.0.0"
+)
+```
+
+#### 3.3.6 Ventajas de la Arquitectura de Barrera
+
+1. **Seguridad en capas**:
+   - El script de ingesta NO tiene credenciales de PostgreSQL
+   - Si el script se compromete, no hay acceso directo a la BD
+
+2. **Validación centralizada**:
+   - Un solo punto de validación para todos los clientes
+   - Cambios en validación no requieren actualizar scripts
+
+3. **Trazabilidad completa**:
+   - Todos los logs de ingesta están en el contenedor backend
+   - Fácil auditoría de qué datos entraron y cuándo
+
+4. **Escalabilidad horizontal**:
+   - Múltiples instancias del script pueden enviar datos
+   - El Backend puede escalar independientemente
+
+5. **Preparado para el futuro**:
+   - Fácil añadir autenticación (JWT, API keys)
+   - Fácil añadir rate limiting
+   - Fácil exponer endpoints de consulta (actualmente comentados)
 
 ---
 
-### 3.3 Transformaciones con dbt
+### 3.4 Transformaciones con dbt (DESHABILITADO)
 
 **Ubicación**: Directorio `dbt/air_quality_dbt/`
-**Configuración en docker-compose**: Líneas 22-35
+**Configuración en docker-compose**: Líneas 22-35 (comentadas)
 
-dbt (data build tool) es una herramienta moderna de transformación de datos que permite escribir transformaciones SQL modulares y testeables. En este proyecto, dbt es responsable de tomar los datos crudos de la capa raw y transformarlos progresivamente hasta crear tablas analíticas listas para visualización.
+⚠️ **ESTADO ACTUAL**: El servicio dbt está **completamente deshabilitado** en la configuración actual del proyecto. El código dbt existe en el repositorio pero el servicio está comentado en docker-compose.yml.
+
+**Razón**: El proyecto actualmente se enfoca en la ingesta validada de datos en columnas estructuradas. Los datos llegan directamente a la tabla `raw.valencia_air` en formato columnar (no JSONB genérico), por lo que las transformaciones staging/intermediate/marts no son necesarias para el caso de uso actual.
+
+**Contenido del directorio**:
+El código dbt implementado incluye:
+- Modelos staging para extraer campos de JSONB (obsoleto con la arquitectura actual)
+- Modelos intermediate para unificar ciudades
+- Modelos marts para agregaciones diarias y horarias
+
+**Para habilitar dbt** (si se necesita en el futuro):
+1. Descomentar el servicio en docker-compose.yml (líneas 22-35)
+2. Ejecutar: `docker-compose up -d dbt`
+3. El servicio ejecutaría transformaciones cada 5 minutos
+
+dbt (data build tool) es una herramienta moderna de transformación de datos que permite escribir transformaciones SQL modulares y testeables. En este proyecto, dbt está preparado para tomar los datos de la capa raw y transformarlos progresivamente hasta crear tablas analíticas.
 
 **Configuración especial en Docker**:
 
@@ -540,11 +870,11 @@ Similar a la tabla diaria pero con agregación por hora (no mostrado en el anál
 
 ---
 
-### 3.4 Visualización con Grafana
+### 3.5 Visualización con Grafana (DESHABILITADO)
 
-**Configuración en docker-compose**: Líneas 37-51
+**Configuración en docker-compose**: Líneas 37-51 (comentadas)
 
-⚠️ **NOTA IMPORTANTE**: El servicio Grafana está actualmente **deshabilitado** en docker-compose.yml (comentado). El proyecto se enfoca en el pipeline ETL core. Para habilitar Grafana, ver sección 5.7.
+⚠️ **ESTADO ACTUAL**: El servicio Grafana está completamente **deshabilitado** en docker-compose.yml (comentado). El proyecto se enfoca en el pipeline de ingesta y almacenamiento. Para habilitar Grafana, ver sección 5.7.
 
 **Estado actual**: El servicio Grafana está comentado en el archivo docker-compose.yml para simplificar el despliegue inicial y enfocarse en la infraestructura de datos core (ingesta y transformación).
 
@@ -574,43 +904,61 @@ Actualmente, la exploración de datos se realiza mediante consultas SQL directas
 
 El sistema procesa datos siguiendo este flujo secuencial:
 
-**Fase 1: Extracción (cada ejecución de la app)**
+**Fase 1: Extracción desde APIs Públicas (Script de Ingesta)**
 
-1. El orquestador (main.py) verifica la infraestructura de base de datos
-2. Lee la configuración de ciudades activas desde config.py
-3. Para cada ciudad activa:
-   - Llama a su API específica
-   - Recibe JSON o XML
-   - Inserta datos crudos en tablas raw.* con formato JSONB
+1. El orquestador (`main.py`) ejecuta al arrancar el contenedor
+2. Espera 5 segundos para asegurar que PostgreSQL y Backend estén listos
+3. Lee la configuración de ciudades activas desde `config.py`
+4. Para cada ciudad activa (actualmente solo Valencia):
+   - Llama a la API pública usando `f_llamada_api()`
+   - Recibe respuesta JSON con datos de estaciones
+   - Extrae el array de estaciones desde `results`
 
-**Fase 2: Transformación (cada 5 minutos, automático con dbt)**
+**Fase 2: Validación y Persistencia (Backend API)**
 
-1. Staging:
-   - stg_valencia_air extrae campos específicos del JSONB
-   - Tipifica cada campo correctamente
-   - Materializa como vista SQL
+1. El script envía los datos al Backend mediante HTTP POST a `/api/ingest`
+2. FastAPI recibe la lista de estaciones como JSON
+3. Pydantic valida automáticamente cada objeto con el modelo `AirQualityInbound`:
+   - Verifica que los campos obligatorios existan
+   - Valida tipos de datos (int, float, str, dict)
+   - Rechaza campos no declarados (`extra='forbid'`)
+   - Si falla la validación, retorna HTTP 422 con detalles
+4. Si la validación es exitosa:
+   - Convierte los modelos Pydantic a DataFrame de pandas
+   - Inserta en PostgreSQL: `raw.valencia_air`
+   - Usa SQLAlchemy para inserción eficiente
+   - Maneja tipos especiales (JSONB para geo_shape/geo_point_2d, TIMESTAMPTZ para fecha_carg)
+5. El Backend retorna respuesta al script:
+   - HTTP 201: Éxito con mensaje de confirmación
+   - HTTP 500: Error con detalles del problema
 
-2. Intermediate:
-   - int_air_quality_union unifica todas las ciudades
-   - Añade dimensión city
-   - Materializa como tabla física
+**Fase 3: Almacenamiento Estructurado (PostgreSQL)**
 
-3. Marts:
-   - fct_air_quality_daily agrega por día
-   - fct_air_quality_hourly agrega por hora
-   - Ambas materializadas como tablas físicas
+Los datos se almacenan en `raw.valencia_air` con 19 columnas estructuradas:
+- Identificadores: objectid, fiwareid, nombre, direccion
+- Contaminantes: so2, no2, o3, co, pm10, pm25 (valores numéricos o NULL)
+- Metadatos: tipozona, tipoemisio, calidad_am, parametros, mediciones
+- Temporal: fecha_carg (timestamp de la medición), ingested_at (timestamp de ingesta automático)
+- Geográfico: geo_shape, geo_point_2d (JSONB con coordenadas y geometría)
 
-**Fase 3: Consulta y Visualización**
+**Fase 4: Transformación y Análisis (DESHABILITADA actualmente)**
 
-**Método actual**: Consultas SQL directas a las tablas marts.* mediante psql o herramientas de gestión de bases de datos.
+Los servicios dbt y transformaciones están deshabilitados. Si se habilitan en el futuro:
+- Staging: Vistas para limpiar/normalizar datos
+- Intermediate: Unificación de múltiples ciudades
+- Marts: Agregaciones diarias/horarias para análisis
 
-**Método alternativo** (Grafana - deshabilitado): Cuando se habilite Grafana, consultará las tablas marts.* en tiempo real y mostrará:
-- Evolución temporal de contaminantes
-- Comparación entre estaciones
-- Alertas de picos de contaminación
-- Tendencias históricas
+**Fase 5: Consulta y Visualización**
 
-Ver sección 6.2 para ejemplos de consultas SQL útiles para explorar los datos.
+**Método actual**: Consultas SQL directas a la tabla `raw.valencia_air` mediante:
+- psql (línea de comandos)
+- Herramientas gráficas (pgAdmin, DBeaver, etc.)
+- Ver sección 6.2 para ejemplos de consultas útiles
+
+**Métodos futuros** (deshabilitados):
+- Grafana: Visualización de tendencias y dashboards
+- Frontend Dashboard: Interfaz web interactiva con Dash/Plotly
+- Endpoints de consulta del Backend API: Para aplicaciones externas
 
 ---
 
@@ -646,13 +994,13 @@ docker-compose up -d
 ![alt text](image-1.png)
 
 **Servicios que se inician** (configuración actual):
-1. **Base de datos PostgreSQL** (puerto 5431)
-2. **Aplicación de ingestión Python** (ejecuta una vez y termina)
-3. **Servicio dbt** (bucle continuo de transformaciones cada 5 minutos)
+1. **Base de datos PostgreSQL** (puerto 5431) - Contenedor persistente
+2. **Backend API FastAPI** (puerto 8000) - Contenedor persistente que valida e inserta datos
+3. **Script de ingestión Python** (ejecuta una vez y termina) - Obtiene datos y los envía al Backend
 
 **Servicios deshabilitados** (comentados en docker-compose.yml):
+- dbt (transformaciones SQL)
 - Servidor Grafana (puerto 3000)
-- Backend API (puerto 8000)
 - Frontend Dashboard (puerto 8050)
 
 Para habilitar servicios adicionales, ver sección 5.7.
@@ -671,16 +1019,16 @@ docker-compose ps
 ```
 NAME           STATUS          PORTS
 db             Up 2 minutes    0.0.0.0:5431->5432/tcp
-app            Exited (0)
-dbt            Up 2 minutes
+backend        Up 2 minutes    0.0.0.0:8000->8000/tcp
+ingestion      Exited (0)
 ```
 
 **Interpretación**:
 - `Up`: El contenedor está corriendo activamente
-- `Exited (0)`: El contenedor terminó correctamente (comportamiento esperado para app que ejecuta una sola vez)
-- `Exited (1)`: El contenedor terminó con error (revisar logs con `docker-compose logs app`)
+- `Exited (0)`: El contenedor terminó correctamente (comportamiento esperado para ingestion que ejecuta una sola vez)
+- `Exited (1)`: El contenedor terminó con error (revisar logs con `docker-compose logs ingestion`)
 
-**Nota**: Solo verás 3 servicios listados (db, app, dbt) ya que Grafana, backend y frontend están deshabilitados.
+**Nota**: Solo verás 3 servicios listados (db, backend, ingestion) ya que dbt, Grafana y frontend están deshabilitados.
 
 ### 5.4 Consultar logs
 
@@ -693,10 +1041,9 @@ docker-compose logs -f
 
 **Ver logs de un servicio específico**:
 ```bash
-docker-compose logs -f app      # Ver si la ingesta funcionó
-docker-compose logs -f dbt      # Ver transformaciones
-docker-compose logs -f db       # Ver consultas SQL
-docker-compose logs -f grafana  # Ver inicio de Grafana
+docker-compose logs -f ingestion  # Ver si la ingesta funcionó
+docker-compose logs -f backend    # Ver validación y inserción de datos
+docker-compose logs -f db         # Ver consultas SQL y conexiones
 ```
 
 **Significado del parámetro `-f` (follow)**:
@@ -708,7 +1055,8 @@ docker-compose logs -f grafana  # Ver inicio de Grafana
 
 **Ver solo las últimas líneas**:
 ```bash
-docker-compose logs --tail=50 app  # Últimas 50 líneas
+docker-compose logs --tail=50 ingestion  # Últimas 50 líneas del script
+docker-compose logs --tail=100 backend   # Últimas 100 líneas del backend
 ```
 
 ### 5.5 Reconstruir imágenes tras cambios en código
@@ -734,7 +1082,8 @@ docker-compose build
 docker-compose up -d
 
 # 4. Verificar logs
-docker-compose logs -f app
+docker-compose logs -f backend
+docker-compose logs ingestion
 ```
 
 ### 5.6 Detener el sistema
@@ -1051,64 +1400,126 @@ Explicación:
 
 ### 6.2 Consultas útiles
 
-**Ver datos crudos recientes**:
+**Ver datos recientes con todos los contaminantes**:
 ```sql
 SELECT
-    station_id,
-    data_raw->>'nombre' as estacion,
-    timestamp
-FROM raw.valencia_air
-ORDER BY timestamp DESC
-LIMIT 10;
-```
-
-**Ver datos limpios en staging**:
-```sql
-SELECT
-    station_name,
+    objectid,
+    nombre AS estacion,
+    direccion,
     no2,
     pm10,
     pm25,
-    measure_timestamp
-FROM staging.stg_valencia_air
-ORDER BY measure_timestamp DESC
+    o3,
+    co,
+    so2,
+    calidad_am,
+    fecha_carg AS fecha_medicion,
+    ingested_at AS fecha_ingesta
+FROM raw.valencia_air
+ORDER BY fecha_carg DESC
 LIMIT 10;
 ```
 
-**Estadísticas diarias**:
+**Ver registros más recientes por estación**:
 ```sql
-SELECT
-    measure_date,
-    station_name,
-    daily_avg_no2,
-    daily_avg_pm10,
-    max_pm10_peak
-FROM marts.fct_air_quality_daily
-WHERE measure_date >= CURRENT_DATE - INTERVAL '7 days'
-ORDER BY measure_date DESC, daily_avg_pm10 DESC;
+WITH ranked AS (
+    SELECT
+        nombre,
+        direccion,
+        no2,
+        pm10,
+        pm25,
+        fecha_carg,
+        ROW_NUMBER() OVER (PARTITION BY nombre ORDER BY fecha_carg DESC) as rn
+    FROM raw.valencia_air
+)
+SELECT * FROM ranked WHERE rn = 1
+ORDER BY nombre;
 ```
 
-**Conteo de registros por capa**:
-```sql
-SELECT 'raw' as capa, COUNT(*) as registros FROM raw.valencia_air
-UNION ALL
-SELECT 'staging', COUNT(*) FROM staging.stg_valencia_air
-UNION ALL
-SELECT 'marts_daily', COUNT(*) FROM marts.fct_air_quality_daily;
-```
-
-**Identificar estaciones con peor calidad**:
+**Calcular promedios diarios manualmente** (sin marts):
 ```sql
 SELECT
-    station_name,
-    city,
-    daily_avg_pm10,
-    daily_avg_no2,
-    measure_date
-FROM marts.fct_air_quality_daily
-WHERE measure_date = CURRENT_DATE
-ORDER BY daily_avg_pm10 DESC
+    DATE(fecha_carg) AS fecha,
+    nombre AS estacion,
+    ROUND(AVG(no2), 2) AS promedio_no2,
+    ROUND(AVG(pm10), 2) AS promedio_pm10,
+    ROUND(AVG(pm25), 2) AS promedio_pm25,
+    ROUND(MAX(pm10), 2) AS pico_pm10,
+    COUNT(*) AS num_mediciones
+FROM raw.valencia_air
+WHERE fecha_carg >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY DATE(fecha_carg), nombre
+ORDER BY fecha DESC, promedio_pm10 DESC;
+```
+
+**Conteo total de registros**:
+```sql
+SELECT COUNT(*) as total_registros FROM raw.valencia_air;
+```
+
+**Identificar estaciones con peor calidad del aire (últimas 24 horas)**:
+```sql
+SELECT
+    nombre AS estacion,
+    ROUND(AVG(pm25), 2) AS promedio_pm25,
+    ROUND(AVG(no2), 2) AS promedio_no2,
+    ROUND(AVG(pm10), 2) AS promedio_pm10,
+    calidad_am
+FROM raw.valencia_air
+WHERE fecha_carg >= NOW() - INTERVAL '24 hours'
+GROUP BY nombre, calidad_am
+ORDER BY promedio_pm25 DESC
 LIMIT 5;
+```
+
+**Ver registros con contaminantes NULL** (sensores inactivos o en mantenimiento):
+```sql
+SELECT
+    nombre,
+    fecha_carg,
+    CASE
+        WHEN no2 IS NULL THEN 'NO2 '
+        ELSE ''
+    END ||
+    CASE
+        WHEN pm10 IS NULL THEN 'PM10 '
+        ELSE ''
+    END ||
+    CASE
+        WHEN pm25 IS NULL THEN 'PM2.5 '
+        ELSE ''
+    END AS contaminantes_faltantes
+FROM raw.valencia_air
+WHERE no2 IS NULL OR pm10 IS NULL OR pm25 IS NULL
+ORDER BY fecha_carg DESC
+LIMIT 20;
+```
+
+**Estadísticas de ingesta**:
+```sql
+SELECT
+    DATE(ingested_at) AS fecha_ingesta,
+    COUNT(*) AS registros_ingestados,
+    COUNT(DISTINCT nombre) AS estaciones_distintas,
+    MIN(ingested_at) AS primera_ingesta,
+    MAX(ingested_at) AS ultima_ingesta
+FROM raw.valencia_air
+GROUP BY DATE(ingested_at)
+ORDER BY fecha_ingesta DESC;
+```
+
+**Ver coordenadas geográficas de estaciones**:
+```sql
+SELECT
+    nombre,
+    direccion,
+    geo_point_2d->>'lon' AS longitud,
+    geo_point_2d->>'lat' AS latitud
+FROM raw.valencia_air
+WHERE geo_point_2d IS NOT NULL
+GROUP BY nombre, direccion, geo_point_2d
+ORDER BY nombre;
 ```
 
 ### 6.3 Diccionario de Datos y Contaminantes
@@ -1440,18 +1851,23 @@ dbt docs generate
 
 ```
 Data-Project-1-Calidad-del-aire/
-├── app/                          # [ACTIVO] Aplicación de ingestión Python
-│   ├── ingestion/
+├── ingestion/                    # [ACTIVO] Script de ingestión Python
+│   ├── ciudades/
 │   │   ├── __init__.py
 │   │   ├── valencia.py           # Ingesta de Valencia (activa)
 │   │   └── madrid.py             # Ingesta de Madrid (inactiva)
-│   ├── config.py                 # Configuración de ciudades y BD
-│   ├── database.py               # Funciones de conexión y creación de tablas
+│   ├── config.py                 # Configuración de ciudades y URL del Backend
 │   ├── main.py                   # Orquestador principal
 │   ├── utils.py                  # Funciones auxiliares (llamadas API)
-│   ├── requirements.txt          # Dependencias Python
-│   └── Dockerfile                # Imagen Docker para ingesta
-├── dbt/                          # [ACTIVO] Transformaciones dbt
+│   ├── requirements.txt          # Dependencias Python (requests)
+│   └── Dockerfile                # Imagen Docker (python:3.11-slim)
+├── backend/                      # [ACTIVO] API de barrera FastAPI
+│   ├── config.py                 # Configuración SQLAlchemy
+│   ├── database.py               # Inicialización de BD (esquemas y tablas)
+│   ├── main.py                   # Endpoints FastAPI y modelos Pydantic
+│   ├── requirements.txt          # Dependencias (fastapi, sqlalchemy, pandas, psycopg)
+│   └── Dockerfile                # Imagen Docker para backend
+├── dbt/                          # [INACTIVO] Transformaciones dbt
 │   ├── air_quality_dbt/
 │   │   ├── models/
 │   │   │   ├── staging/
@@ -1494,54 +1910,146 @@ Data-Project-1-Calidad-del-aire/
 - **[INACTIVO]**: Código implementado pero servicio deshabilitado en docker-compose.yml
 
 **Notas sobre directorios inactivos**:
-- `backend/` y `frontend/`: Código completo pero comentado en docker-compose.yml (líneas 53-76)
+- `dbt/`: Código completo pero comentado en docker-compose.yml (líneas 22-35)
+- `frontend/`: Código completo pero comentado en docker-compose.yml (líneas 65-75)
 - `grafana/`: Directorio existe pero falta configuración de provisionamiento; servicio comentado (líneas 37-51)
 - Para habilitar servicios inactivos, ver sección 5.7
+
+**Estado actual de servicios**:
+- ✅ **db**: Base de datos PostgreSQL (activo)
+- ✅ **backend**: API FastAPI de validación e ingesta (activo)
+- ✅ **ingestion**: Script Python de extracción de APIs (ejecuta una vez)
+- ❌ **dbt**: Transformaciones SQL (deshabilitado)
+- ❌ **grafana**: Visualización (deshabilitado)
+- ❌ **frontend**: Dashboard Dash/Plotly (deshabilitado)
 
 ---
 
 ## 8. ASPECTOS TÉCNICOS DESTACABLES
 
-### 8.1 Gestión de dependencias entre servicios
+### 8.1 Arquitectura de API de Barrera
+
+El proyecto implementa un **patrón de API de barrera** (Barrier API) que proporciona múltiples ventajas:
+
+**Desacoplamiento**:
+- El script de ingesta NO conoce el esquema de PostgreSQL
+- NO necesita credenciales de base de datos
+- Solo necesita la URL del Backend
+
+**Validación centralizada**:
+- Pydantic valida datos en un solo punto
+- Todos los clientes se benefician de la misma validación
+- Cambios en validación no requieren actualizar clientes
+
+**Seguridad en capas**:
+- Aislamiento total del acceso a la base de datos
+- Si el script se compromete, no hay acceso directo a PostgreSQL
+- Preparado para añadir autenticación (JWT, API keys)
+
+**Escalabilidad**:
+- Múltiples scripts pueden enviar datos al Backend
+- El Backend puede escalarse horizontalmente (múltiples instancias)
+- El script de ingesta puede ejecutarse desde cualquier ubicación
+
+### 8.2 Gestión de dependencias entre servicios
 
 El archivo docker-compose.yml establece dependencias explícitas:
-- app depende de db
-- dbt depende de app
-- grafana depende de db
+- ingestion depende de db
+- backend depende de db
+- ingestion envía datos a backend (dependencia lógica)
 
 Esto asegura que los servicios se inicien en el orden correcto.
 
-### 8.2 Manejo de errores y reintentos
+### 8.3 Manejo de errores y reintentos
 
-Tanto las conexiones a base de datos como las llamadas a APIs implementan lógica de reintentos exponenciales. Esto hace el sistema resiliente ante:
-- Retrasos en el inicio de PostgreSQL
-- Caídas temporales de APIs externas
+Tanto las conexiones a base de datos como las llamadas a APIs implementan lógica de reintentos. Esto hace el sistema resiliente ante:
+- Retrasos en el inicio de PostgreSQL (10 reintentos en `init_db()`)
+- Caídas temporales de APIs externas (3 reintentos en `f_llamada_api()`)
 - Problemas de red transitorios
 
-### 8.3 Almacenamiento flexible con JSONB
+**Configuración de reintentos**:
+```python
+RETRY_ATTEMPTS = 3
+TIMEOUT_SECONDS = 10
+```
 
-El uso de JSONB en la capa raw permite:
-- Ingerir datos sin conocer su esquema completo de antemano
-- Añadir nuevas ciudades sin modificar la estructura de tablas
-- Consultar campos específicos con operadores JSON de PostgreSQL
-- Mantener el payload original para auditoría
+### 8.4 Almacenamiento estructurado con tipado fuerte
 
-### 8.4 Separación de responsabilidades
+A diferencia de un enfoque genérico con JSONB, el proyecto usa **columnas estructuradas**:
+
+**Ventajas**:
+- Validación automática de tipos por PostgreSQL
+- Índices eficientes en columnas específicas
+- Consultas más rápidas (no necesita extraer de JSON)
+- Esquema explícito y autodocumentado
+
+**Campos JSONB solo para geografía**:
+- `geo_shape`: Geometría compleja (polígonos)
+- `geo_point_2d`: Coordenadas simples (lat, lon)
+
+Esto combina lo mejor de ambos mundos: estructura para datos tabulares, flexibilidad para datos geográficos.
+
+### 8.5 Validación con Pydantic
+
+FastAPI + Pydantic proporcionan **validación automática** sin código adicional:
+
+```python
+class AirQualityInbound(BaseModel):
+    objectid: int  # Debe ser entero
+    no2: Optional[float] = None  # Puede ser float o null
+    model_config = ConfigDict(extra='forbid')  # Rechaza campos extras
+```
+
+**Beneficios**:
+- Documentación automática de tipos en Swagger
+- Errores claros cuando la validación falla (HTTP 422)
+- Conversión automática de tipos cuando es posible
+- Protección contra inyección de campos maliciosos
+
+### 8.6 Separación de responsabilidades
 
 Cada componente tiene un rol claramente definido:
-- Python: Extracción e ingesta
-- PostgreSQL: Almacenamiento persistente
-- dbt: Transformación y modelado
-- Grafana: Visualización
+- **Script de ingesta**: Extracción de APIs públicas
+- **Backend API**: Validación y persistencia
+- **PostgreSQL**: Almacenamiento estructurado
+- **dbt** (futuro): Transformación y modelado
+- **Grafana** (futuro): Visualización
 
 Esta separación facilita el mantenimiento y escalado independiente de cada capa.
 
-### 8.5 Configuración centralizada
+### 8.7 Configuración centralizada
 
-El archivo .env y config.py centralizan toda la configuración, facilitando:
+El archivo `.env` centraliza toda la configuración, facilitando:
 - Migración a diferentes entornos (desarrollo, producción)
 - Cambio de credenciales sin tocar código
 - Activación/desactivación de ciudades sin modificar lógica
+
+**Variables clave**:
+```bash
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+BARRIER_API_URL=http://backend:8000/api/ingest
+```
+
+### 8.8 Uso de Docker Compose para orquestación
+
+Docker Compose simplifica el despliegue:
+- Un solo comando: `docker-compose up -d`
+- Red interna automática para comunicación entre contenedores
+- Volúmenes persistentes para PostgreSQL
+- Variables de entorno compartidas desde `.env`
+- Políticas de reinicio configurables (`restart: unless-stopped`)
+
+### 8.9 Timestamps automáticos
+
+La tabla raw.valencia_air incluye dos timestamps:
+- `fecha_carg`: Timestamp de la medición (viene de la API)
+- `ingested_at`: Timestamp de inserción (automático con `DEFAULT CURRENT_TIMESTAMP`)
+
+Esto permite:
+- Auditoría de cuándo se ingirieron los datos
+- Detectar retrasos entre medición e ingesta
+- Troubleshooting de problemas de sincronización
 
 ---
 
@@ -1560,39 +2068,46 @@ Para integrar una nueva ciudad:
 
 ### 9.2 Automatización de ingesta
 
-**Estado actual**: La aplicación de ingesta se ejecuta una sola vez y termina (no tiene política de reinicio automático en docker-compose.yml).
+**Estado actual**: El script de ingesta se ejecuta una sola vez y termina (no tiene política de reinicio automático en docker-compose.yml).
 
 **Opciones para automatizar la ingesta periódica**:
 
-1. **Añadir política de reinicio en Docker** (más simple):
+1. **Añadir política de reinicio en Docker con sleep** (más simple):
    ```yaml
-   app:
-     restart: always  # o 'on-failure'
+   ingestion:
+     restart: always
    ```
    Luego añadir sleep al final de main.py:
    ```python
    import time
-   time.sleep(300)  # Esperar 5 minutos antes de terminar
-   ```
-
-2. **Implementar bucle infinito en main.py**:
-   ```python
    while True:
+       time.sleep(5)  # Espera inicial
        orquestador()
-       time.sleep(300)  # 5 minutos
+       print("Esperando 5 minutos para siguiente ingesta...")
+       time.sleep(300)  # 5 minutos entre ejecuciones
    ```
 
-3. **Usar cron dentro del contenedor**:
-   - Instalar cron en el Dockerfile
-   - Configurar crontab para ejecutar main.py periódicamente
-   - Mantener contenedor corriendo con un proceso persistente
+2. **Usar cron dentro del contenedor**:
+   - Modificar Dockerfile para instalar cron
+   - Crear archivo crontab con programación (ej: `*/5 * * * *` para cada 5 minutos)
+   - Cambiar CMD para iniciar cron en lugar de ejecutar main.py directamente
+   - Mantener contenedor corriendo con proceso cron
 
-4. **Scheduler externo** (más complejo pero más robusto):
+3. **Cron del sistema operativo host**:
+   - Crear script que ejecute `docker-compose run --rm ingestion`
+   - Programar con cron del sistema (Linux/Mac) o Task Scheduler (Windows)
+   - Ventaja: No modifica el código del contenedor
+
+4. **Scheduler externo profesional** (más complejo pero más robusto):
    - Implementar Apache Airflow para orquestación avanzada
    - Configurar DAGs con dependencias y manejo de errores
    - Monitoreo y alertas integrados
+   - Ideal para pipelines complejos con múltiples fuentes
 
-**Recomendación**: Para producción, la opción 2 (bucle infinito) es la más simple y efectiva. Para entornos más complejos con múltiples pipelines, Airflow es preferible.
+**Recomendación**:
+- **Para desarrollo/testing**: Opción 3 (cron del host), más flexible
+- **Para producción simple**: Opción 1 (bucle infinito con restart), más simple
+- **Para producción compleja**: Opción 4 (Airflow), más robusto
 
 ### 9.3 Alertas y notificaciones
 
@@ -1601,27 +2116,52 @@ Implementar sistema de alertas cuando:
 - APIs fallen durante tiempo prolongado
 - Transformaciones dbt detecten anomalías
 
-### 9.4 API REST (backend comentado)
+### 9.4 Mejoras al Backend API
 
-**Estado actual**: El código del backend está implementado en el directorio `backend/` pero el servicio está deshabilitado en docker-compose.yml (líneas 53-63).
-
-**Funcionalidad implementada**:
-- API REST con FastAPI
-- Endpoints para consultar datos de calidad del aire
-- Conexión directa a PostgreSQL
-- Documentación automática con Swagger/ReDoc
-
-**Para habilitar**:
-1. Descomentar líneas 53-63 en docker-compose.yml
-2. Ejecutar `docker-compose up -d backend`
-3. Acceder a http://localhost:8000/docs
+**Estado actual**: El Backend está **activo** y funcionando como API de barrera. Actualmente solo tiene el endpoint de ingesta (`POST /api/ingest`).
 
 **Mejoras sugeridas**:
-- Implementar autenticación (JWT, API keys)
-- Añadir endpoints para filtrado avanzado (por fecha, estación, contaminante)
-- Implementar paginación para resultados grandes
-- Añadir caché para consultas frecuentes
-- Rate limiting para prevenir abuso
+
+1. **Endpoints de consulta** (actualmente comentados en el código):
+   ```python
+   @app.get("/")
+   def read_root():
+       return {"status": "ok", "message": "Air Quality API is running"}
+
+   @app.get("/api/v1/hourly-metrics")
+   def get_hourly_metrics(limit: int = 100):
+       # Devuelve métricas horarias desde la BD
+   ```
+
+2. **Autenticación y seguridad**:
+   - Implementar autenticación con JWT o API keys
+   - Endpoints públicos de consulta vs privados de ingesta
+   - Rate limiting para prevenir abuso
+   - CORS configurado para acceso desde frontend
+
+3. **Endpoints de consulta avanzados**:
+   - Filtrado por fecha: `/api/v1/data?start_date=2024-01-01&end_date=2024-01-31`
+   - Filtrado por estación: `/api/v1/data?station=nombre_estacion`
+   - Filtrado por contaminante: `/api/v1/data?contaminant=pm25`
+   - Agregaciones: `/api/v1/stats/daily`, `/api/v1/stats/hourly`
+
+4. **Paginación**:
+   - Implementar paginación para resultados grandes
+   - Ejemplo: `/api/v1/data?page=1&per_page=100`
+
+5. **Caché**:
+   - Implementar Redis para cachear consultas frecuentes
+   - Reducir carga en PostgreSQL
+   - TTL configurable según tipo de consulta
+
+6. **Validación de respuestas**:
+   - Modelos Pydantic para respuestas (actualmente solo para request)
+   - Asegura consistencia de datos salientes
+
+7. **Logging y monitoreo**:
+   - Integrar logging estructurado (JSON logs)
+   - Métricas de performance (tiempo de respuesta, errores)
+   - Integración con herramientas de monitoreo (Prometheus, Grafana)
 
 ### 9.5 Frontend interactivo
 
@@ -1649,17 +2189,44 @@ Implementar sistema de alertas cuando:
 
 ## 10. CONCLUSIONES
 
-Este proyecto implementa una arquitectura moderna de pipeline de datos que:
+Este proyecto implementa una **arquitectura moderna de pipeline de datos con API de barrera** que:
 
-- Integra múltiples fuentes de datos heterogéneas (JSON, XML)
-- Aplica transformaciones progresivas siguiendo el patrón Medallion
-- Garantiza calidad de datos mediante tests automatizados con dbt
-- Proporciona visualización flexible con Grafana
-- Es escalable y extensible a nuevas ciudades
-- Utiliza contenedores Docker para portabilidad
-- Implementa mejores prácticas de ingeniería de datos
+**Arquitectura y diseño**:
+- Implementa el patrón Barrier API para seguridad y escalabilidad
+- Separa claramente extracción, validación y persistencia
+- Utiliza contenedores Docker para portabilidad y despliegue simplificado
+- Diseñado para ser extensible a nuevas ciudades con mínimos cambios
 
-La separación en capas (raw, staging, intermediate, marts) permite que diferentes perfiles técnicos trabajen en distintas fases del pipeline sin interferencias, y facilita el debugging al poder inspeccionar datos en cada etapa de transformación.
+**Validación y calidad de datos**:
+- Validación automática con Pydantic antes de inserción
+- Tipado fuerte en PostgreSQL con columnas estructuradas
+- Rechazo de campos no declarados para prevenir inyección
+- Trazabilidad completa con timestamps automáticos
+
+**Seguridad**:
+- Aislamiento de acceso a base de datos mediante API
+- Sin credenciales de PostgreSQL en el script de ingesta
+- Preparado para autenticación (JWT, API keys)
+- Logs centralizados en el Backend
+
+**Escalabilidad**:
+- Backend puede escalar horizontalmente (múltiples instancias)
+- Script de ingesta puede ejecutarse desde múltiples ubicaciones
+- PostgreSQL optimizado con índices y tipos de datos apropiados
+
+**Extensibilidad**:
+- Fácil añadir nuevas ciudades modificando `CITIES_CONFIG`
+- Esquemas staging/intermediate/marts preparados para futuras transformaciones
+- Servicio dbt listo para activarse cuando se requiera
+- Backend con endpoints de consulta comentados, listos para habilitar
+
+**Tecnologías modernas**:
+- FastAPI para API de alta performance
+- Pydantic para validación declarativa
+- SQLAlchemy + pandas para inserción eficiente
+- PostgreSQL 17 con soporte JSONB para datos geográficos
+
+Este proyecto demuestra cómo construir un pipeline de datos robusto, seguro y escalable utilizando mejores prácticas de ingeniería de software. La arquitectura de barrera proporciona una base sólida para evolucionar hacia un sistema de análisis de calidad del aire más complejo, con transformaciones, agregaciones y visualizaciones avanzadas.
 
 ---
 
