@@ -1,12 +1,25 @@
 from fastapi import FastAPI, HTTPException
-from config import engine  # <--- Importamos la conexión desde el archivo vecino
+from config import engine
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 from sqlalchemy import types
+from contextlib import asynccontextmanager
+from database import init_db
 
-# 1. Inicialización de la API
+@asynccontextmanager    # El decorador es un envoltorio funcional. Le dice a python que la función es un Gestor de Contexto (Context Manager) y tiene dos tiempos, una al arrancar (Antes del yield) y otra al apagar la api (Despues del yield)
+async def lifespan(app: FastAPI):
+    # --- CÓDIGO AL ARRANCAR EL CONTENEDOR ---
+    try:
+        init_db()
+    except Exception as e:
+        print(f"❌ Error inicializando la BD: {e}")
+    yield   #Pausa la ejecución de la función para seguir con la aplicación.
+            #Se pueden configurar acciones a realizar al apagar la api
+
+# Inicialización de la API
 app = FastAPI(
+    lifespan=lifespan,
     title="Air Quality Barrier API",
     description="API de aislamiento para proteger el acceso a air_quality_db",
     version="1.0.0"
@@ -54,7 +67,7 @@ class AirQualityInbound(BaseModel):
     geo_point_2d: Dict[str, Any]
 
     # CONFIGURACIÓN DE SEGURIDAD
-    # 'forbid' asegura que no aceptamos ningún campo que no esté en esta lista
+    # 'forbid' asegura que no aceptamos ningún campo nuevo que no esté en esta lista
     model_config = ConfigDict(extra='forbid')
 
 # --- ENDPOINTS ---
