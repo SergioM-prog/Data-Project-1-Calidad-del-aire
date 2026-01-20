@@ -1,7 +1,7 @@
 # Imagen ligera de Python
 FROM python:3.11-slim
 
-# Evitar archivos .pyc
+# Evita que Python genere archivos .pyc y asegura que los logs se vean en tiempo real
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
