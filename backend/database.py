@@ -1,16 +1,55 @@
-import os
-from sqlalchemy import create_engine
+from sqlalchemy import text
+from config import engine # Importamos el engine centralizado
+import time
 
-# Obtenemos credenciales de las variables de entorno (las mismas del docker-compose)
-user = os.getenv('POSTGRES_USER', 'postgres')
-password = os.getenv('POSTGRES_PASSWORD', 'postgres')
-db_name = os.getenv('POSTGRES_DB', 'air_quality_db')
-host = 'db' # Nombre del servicio en docker-compose
-port = '5432'
+def init_db():
+    """Inicializa la infraestructura de la base de datos (esquemas y tablas)."""
+    for i in range(10):
+        try:
+            # Usamos engine.connect() y manejamos la transacción manualmente
+            with engine.connect() as conn:
+                print(f"Intento {i+1}: Conectado con SQLAlchemy. Configurando esquemas...")
+                
+                # 1. Creación de esquemas (Capas de Medallón)
+                # Es obligatorio usar text() para ejecutar strings en SQLAlchemy
 
-# URL de conexión
-DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS raw;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS intermediate;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS marts;"))
 
-# Creamos el motor. 
-# pool_pre_ping=True ayuda a recuperar la conexión si se corta.
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+                # 2. Tabla para Valencia
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS raw.valencia_air (
+                        id SERIAL PRIMARY KEY,
+                        ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                        objectid INTEGER,
+                        nombre VARCHAR(255),
+                        direccion TEXT,
+                        tipozona VARCHAR(100),
+                        parametros TEXT,
+                        mediciones TEXT,
+                        so2 NUMERIC,
+                        no2 NUMERIC,
+                        o3 NUMERIC,
+                        co NUMERIC,
+                        pm10 NUMERIC,
+                        pm25 NUMERIC,
+                        tipoemisio VARCHAR(100),
+                        fecha_carg TIMESTAMPTZ,
+                        calidad_am VARCHAR(100),
+                        fiwareid VARCHAR(255),
+                        geo_shape JSONB,
+                        geo_point_2d JSONB
+                    );
+                """))
+                
+                conn.commit() 
+                print("✅ Base de datos lista: Esquemas y tablas RAW creados correctamente.")
+                return 
+
+        except Exception as e:
+            print(f"⚠️ Intento {i+1} fallido: {e}")
+            time.sleep(2)
+
+    raise RuntimeError("No se pudo conectar a la base de datos tras 10 intentos.")
