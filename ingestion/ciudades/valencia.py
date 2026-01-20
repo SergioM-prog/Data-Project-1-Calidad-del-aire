@@ -1,35 +1,37 @@
-from database import f_conexion_bd
+import requests
 from utils import f_llamada_api
-from psycopg.types.json import Json
 
-def f_run_ingestion_valencia(database_url, api_url):
-    connection = f_conexion_bd(database_url, "Valencia_Air_Ingestion")
+def f_run_ingestion_valencia(valencia_api_url, barrier_api_url):
+    """
+    1. Obtiene datos de la API de Valencia.
+    2. Los envía a nuestra API de Barrera mediante un POST.
+    """
+    try:
+        # --- PASO 1: Obtener datos de la fuente original ---
+        print(f">> Conectando con Valencia_API...")
+        response = f_llamada_api(valencia_api_url, "Valencia_API")
+        data = response.json()
+        estaciones = data.get('results', [])
 
-    with connection.cursor() as cur:
-        try:
-            response = f_llamada_api(api_url, "Valencia_API")
-            data = response.json()
-            estaciones = data.get('results', [])
+        if not estaciones:
+            print("⚠️ No se han obtenido estaciones de la API de Valencia.")
+            return
 
-            query_insert = """
-                INSERT INTO raw_valencia_air (station_id, data_raw, timestamp)
-                VALUES (%s, %s, %s)
-            """
+        # --- PASO 2: Enviar los datos a nuestra API de Barrera ---
+        # barrier_api_url será algo como "http://backend:8000/api/ingest"
+        print(f">> Enviando {len(estaciones)} estaciones a la API de Barrera...")
+        
+        # Enviamos la lista completa de estaciones. 
+        # FastAPI la validará automáticamente con la clase AirQualityInbound
+        api_response = requests.post(barrier_api_url, json=estaciones)
 
-            for estacion in estaciones:
-                # Envolvemos el dict en Json()
-                cur.execute(query_insert, (
-                    estacion.get('objectid'),
-                    Json(estacion),
-                    estacion.get('fecha_carg')
-                ))
+        # --- PASO 3: Verificar el resultado ---
+        if api_response.status_code == 201:
+            resultado = api_response.json()
+            print(f"✅ Éxito: {resultado.get('message')}")
+        else:
+            print(f"❌ Error en la API de Barrera (Status {api_response.status_code}): {api_response.text}")
 
-            connection.commit()
-            print(f"✅ Éxito: {len(estaciones)} estaciones enviadas a la BD.")
-
-        except Exception as e:
-            print(f"❌ Error en la ingesta de Valencia: {e}")
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+    except Exception as e:
+        print(f"❌ Error crítico en el flujo de ingesta: {e}")
+        raise

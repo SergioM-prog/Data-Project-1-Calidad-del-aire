@@ -95,7 +95,8 @@ async def ingest_air_data(data: list[AirQualityInbound]):
             index=False,
             dtype={
                 'geo_shape': types.JSON,
-                'geo_point_2d': types.JSON
+                'geo_point_2d': types.JSON,
+                'fecha_carg': types.DateTime(timezone=True)
             }
         )
         
