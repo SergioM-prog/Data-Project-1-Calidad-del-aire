@@ -38,3 +38,73 @@ models:
       +materialized: table
       +tags: ["marts"]
       +schema: marts
+
+
+# Configuración Básica
+
+  # version: '1.0.0'
+  # profile: 'air_quality_dbt'
+  # version: Versión del formato de configuración de dbt (no la versión de tu proyecto)
+  # profile: Nombre del perfil de conexión a la base de datos que dbt usará (se define en ~/.dbt/profiles.yml)
+  
+  # Rutas de Directorios
+
+  # model-paths: ["models"]
+  # analysis-paths: ["analyses"]
+  # test-paths: ["tests"]
+  # seed-paths: ["seeds"]
+  # macro-paths: ["macros"]
+  # snapshot-paths: ["snapshots"]
+  # Indica dónde dbt buscará cada tipo de archivo:
+
+  # models: Transformaciones SQL (el corazón de dbt)
+  # analyses: Consultas SQL ad-hoc para análisis
+  # tests: Tests de calidad de datos
+  # seeds: Archivos CSV para cargar datos estáticos
+  # macros: Funciones reutilizables en Jinja/SQL
+  # snapshots: Capturas históricas de datos cambiantes
+  # Limpieza
+
+  # clean-targets:
+  #   - "target"
+  #   - "dbt_packages"
+  # Directorios que se eliminarán al ejecutar dbt clean (archivos generados y paquetes descargados)
+
+  # Configuración de Modelos (Lo más importante)
+
+  # models:
+  #   air_quality_dbt:
+  #     staging:
+  #       +materialized: view
+  #       +tags: ["staging"]
+  #       +schema: staging
+  # Esta sección define cómo se construyen los modelos siguiendo la arquitectura medallion (staging → intermediate → marts):
+
+  # Staging (Capa de entrada)
+
+  # +materialized: view: Se crean como vistas (no almacenan datos físicamente, son consultas virtuales)
+  # +schema: staging: Se guardan en el esquema staging de la base de datos
+  # +tags: ["staging"]: Etiqueta para ejecutar selectivamente (dbt run --select tag:staging)
+
+  # Intermediate (Capa de transformación)
+
+  # +materialized: table: Se crean como tablas (almacenan datos físicamente para mejor rendimiento)
+  # +schema: intermediate: Se guardan en el esquema intermediate
+  # Capa intermedia donde se realizan transformaciones y limpieza de datos
+
+  # Marts (Capa de consumo)
+
+  # +materialized: table: Tablas finales optimizadas para análisis
+  # +schema: marts: Se guardan en el esquema marts
+
+  # Datos listos para consumo por dashboards, reportes o usuarios finales
+
+  # Flujo de Datos
+
+  # staging (views)     →    intermediate (tables)    →    marts (tables)
+  #    ↓                            ↓                           ↓
+  # Datos crudos            Transformaciones              Datos de negocio
+  # Bajo costo              Procesamiento                 Listos para análisis
+
+
+  # Esta configuración optimiza el balance entre rendimiento (tablas donde se necesita velocidad) y costo de almacenamiento (vistas en staging donde solo se lee).
