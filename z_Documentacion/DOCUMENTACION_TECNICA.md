@@ -14,11 +14,13 @@ Este pipeline automatiza el proceso completo desde la extracción de datos de AP
 
 ## 2. ARQUITECTURA GENERAL DEL SISTEMA
 
-El sistema sigue un flujo de datos secuencial que comienza con la extracción de información desde APIs públicas y finaliza con la visualización de métricas agregadas:
+El sistema sigue un flujo de datos secuencial que comienza con la extracción de información desde APIs públicas y procesa los datos a través de múltiples capas de transformación:
 
 ```
-APIs Públicas → Aplicación Python → PostgreSQL → dbt → Grafana
+APIs Públicas → Aplicación Python → PostgreSQL → dbt
 ```
+
+**Nota**: El sistema incluye soporte para una capa de visualización con Grafana, actualmente deshabilitada. El proyecto se enfoca en el pipeline ETL core (Extracción, Transformación y Carga de datos).
 
 La arquitectura implementa el patrón Medallion con cuatro capas claramente diferenciadas:
 
@@ -26,6 +28,69 @@ La arquitectura implementa el patrón Medallion con cuatro capas claramente dife
 - **Staging**: Primera capa de limpieza donde se extraen y tipifican los campos del JSON
 - **Intermediate**: Unificación de múltiples fuentes de datos en una estructura común
 - **Marts**: Tablas analíticas agregadas y optimizadas para consultas de negocio
+
+### 2.1 Diagramas de Arquitectura
+
+#### 2.1.1 Arquitectura General del Sistema
+
+```mermaid
+graph LR
+    A[Valencia API] --> B[Python Ingestion App]
+    B --> C[(PostgreSQL)]
+    C --> D[dbt Transformations]
+    D --> C
+    C -.-> E[Grafana - Disabled]
+    style E stroke-dasharray: 5 5
+```
+
+#### 2.1.2 Flujo de Datos - Patrón Medallion
+
+```mermaid
+graph TD
+    A[External APIs] --> B[raw schema - JSONB]
+    B --> C[staging schema - Views]
+    C --> D[intermediate schema - Tables]
+    D --> E[marts schema - Aggregated Tables]
+    E --> F[Visualization Layer]
+
+    B -->|"valencia_air<br/>madrid_air"| B
+    C -->|"stg_valencia_air"| C
+    D -->|"int_air_quality_union"| D
+    E -->|"fct_air_quality_daily<br/>fct_air_quality_hourly"| E
+```
+
+#### 2.1.3 Interacción de Servicios Docker
+
+```mermaid
+graph TD
+    subgraph "Servicios Activos"
+        DB[(PostgreSQL:5431)]
+        APP[Python Ingestion]
+        DBT[dbt Loop]
+    end
+
+    subgraph "Servicios Inactivos"
+        GRF[Grafana:3000]
+        BE[Backend API:8000]
+        FE[Frontend:8050]
+    end
+
+    APP -->|depends_on| DB
+    DBT -->|depends_on| APP
+    GRF -.->|depends_on| DB
+    BE -.->|depends_on| DB
+    FE -.->|depends_on| BE
+
+    style GRF stroke-dasharray: 5 5
+    style BE stroke-dasharray: 5 5
+    style FE stroke-dasharray: 5 5
+```
+
+**Leyenda**:
+- Líneas sólidas (→): Servicios activos y sus dependencias
+- Líneas punteadas (-.->): Servicios deshabilitados
+- Servicios activos: db, app, dbt
+- Servicios inactivos: grafana, backend, frontend
 
 ---
 
@@ -68,6 +133,8 @@ La base de datos se organiza en cuatro esquemas según la arquitectura Medallion
 **Configuración en docker-compose**: Líneas 10-20
 
 La aplicación de ingestión es el primer componente del pipeline. Su responsabilidad es extraer datos desde las APIs públicas gubernamentales e insertarlos en la capa raw de la base de datos sin aplicar ninguna transformación. Está construida en Python 3 y organizada en módulos especializados siguiendo el principio de separación de responsabilidades.
+
+**Modelo de ejecución**: La aplicación se ejecuta una sola vez y termina (no tiene política de reinicio automático). Para automatizar la ingesta periódica, se requiere configuración adicional (ver sección 9.2).
 
 **Tecnologías utilizadas**:
 - `psycopg`: Librería moderna de PostgreSQL para Python (versión 3)
@@ -477,9 +544,11 @@ Similar a la tabla diaria pero con agregación por hora (no mostrado en el anál
 
 **Configuración en docker-compose**: Líneas 37-51
 
-Grafana proporciona la interfaz de visualización para explorar los datos procesados.
+⚠️ **NOTA IMPORTANTE**: El servicio Grafana está actualmente **deshabilitado** en docker-compose.yml (comentado). El proyecto se enfoca en el pipeline ETL core. Para habilitar Grafana, ver sección 5.7.
 
-**Configuración del servicio**:
+**Estado actual**: El servicio Grafana está comentado en el archivo docker-compose.yml para simplificar el despliegue inicial y enfocarse en la infraestructura de datos core (ingesta y transformación).
+
+**Configuración del servicio** (cuando está habilitado):
 - Imagen: grafana/grafana-oss:latest
 - Puerto expuesto: 3000
 - Usuario administrador: admin
@@ -491,8 +560,13 @@ Grafana proporciona la interfaz de visualización para explorar los datos proces
 - ./grafana/dashboards: Archivos JSON de dashboards
 - grafana_data: Volumen persistente para datos de configuración
 
+**Nota técnica**: Los archivos de provisionamiento (datasource.yml, dashboards.yml, dashboard JSON) necesitan ser creados antes de habilitar el servicio Grafana.
+
 **Fuente de datos**:
-Conecta directamente al servicio "db" dentro de la red Docker, consultando las tablas del esquema marts para obtener datos agregados listos para visualización.
+Cuando esté habilitado, Grafana conectará directamente al servicio "db" dentro de la red Docker, consultando las tablas del esquema marts para obtener datos agregados listos para visualización.
+
+**Alternativas actuales de visualización**:
+Actualmente, la exploración de datos se realiza mediante consultas SQL directas a PostgreSQL (ver sección 6.2).
 
 ---
 
@@ -526,13 +600,17 @@ El sistema procesa datos siguiendo este flujo secuencial:
    - fct_air_quality_hourly agrega por hora
    - Ambas materializadas como tablas físicas
 
-**Fase 3: Visualización (continua)**
+**Fase 3: Consulta y Visualización**
 
-Grafana consulta las tablas marts.* en tiempo real y muestra:
+**Método actual**: Consultas SQL directas a las tablas marts.* mediante psql o herramientas de gestión de bases de datos.
+
+**Método alternativo** (Grafana - deshabilitado): Cuando se habilite Grafana, consultará las tablas marts.* en tiempo real y mostrará:
 - Evolución temporal de contaminantes
 - Comparación entre estaciones
 - Alertas de picos de contaminación
 - Tendencias históricas
+
+Ver sección 6.2 para ejemplos de consultas SQL útiles para explorar los datos.
 
 ---
 
@@ -567,13 +645,19 @@ docker-compose up -d
 
 ![alt text](image-1.png)
 
-**Servicios que se inician**:
+**Servicios que se inician** (configuración actual):
 1. **Base de datos PostgreSQL** (puerto 5431)
 2. **Aplicación de ingestión Python** (ejecuta una vez y termina)
 3. **Servicio dbt** (bucle continuo de transformaciones cada 5 minutos)
-4. **Servidor Grafana** (puerto 3000)
 
-**Primera ejecución**: La primera vez puede tardar varios minutos porque Docker debe descargar las imágenes base (postgres, dbt, grafana).
+**Servicios deshabilitados** (comentados en docker-compose.yml):
+- Servidor Grafana (puerto 3000)
+- Backend API (puerto 8000)
+- Frontend Dashboard (puerto 8050)
+
+Para habilitar servicios adicionales, ver sección 5.7.
+
+**Primera ejecución**: La primera vez puede tardar varios minutos porque Docker debe descargar las imágenes base (postgres, dbt).
 
 ### 5.3 Verificar estado de servicios
 
@@ -583,19 +667,20 @@ Para verificar que todos los contenedores están corriendo correctamente:
 docker-compose ps
 ```
 
-**Salida esperada**:
+**Salida esperada** (configuración actual):
 ```
 NAME           STATUS          PORTS
 db             Up 2 minutes    0.0.0.0:5431->5432/tcp
 app            Exited (0)
 dbt            Up 2 minutes
-grafana        Up 2 minutes    0.0.0.0:3000->3000/tcp
 ```
 
 **Interpretación**:
-- `Up`: El contenedor está corriendo
-- `Exited (0)`: El contenedor terminó correctamente (normal para app que ejecuta una vez)
-- `Exited (1)`: El contenedor terminó con error (revisar logs)
+- `Up`: El contenedor está corriendo activamente
+- `Exited (0)`: El contenedor terminó correctamente (comportamiento esperado para app que ejecuta una sola vez)
+- `Exited (1)`: El contenedor terminó con error (revisar logs con `docker-compose logs app`)
+
+**Nota**: Solo verás 3 servicios listados (db, app, dbt) ya que Grafana, backend y frontend están deshabilitados.
 
 ### 5.4 Consultar logs
 
@@ -671,6 +756,247 @@ docker-compose down -v
 - **Precaución**: Borra todos los datos de la base de datos y configuraciones de Grafana
 
 ![alt text](image-4.png)
+
+### 5.7 Configuración de Servicios Opcionales
+
+El proyecto incluye servicios adicionales que están deshabilitados por defecto. Esta sección explica cómo habilitarlos según tus necesidades.
+
+#### 5.7.1 Habilitar Grafana
+
+**Paso 1**: Descomentar el servicio en docker-compose.yml (líneas 37-51)
+
+Elimina los caracteres `#` al inicio de cada línea del bloque de Grafana.
+
+**Paso 2**: Crear archivos de provisionamiento
+
+Antes de iniciar Grafana, necesitas crear los archivos de configuración:
+
+```bash
+mkdir -p grafana/provisioning/datasources
+mkdir -p grafana/provisioning/dashboards
+mkdir -p grafana/dashboards
+```
+
+Crear `grafana/provisioning/datasources/datasource.yml`:
+```yaml
+apiVersion: 1
+datasources:
+  - name: PostgreSQL
+    type: postgres
+    url: db:5432
+    database: air_quality_db
+    user: postgres
+    secureJsonData:
+      password: postgres
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+```
+
+Crear `grafana/provisioning/dashboards/dashboards.yml`:
+```yaml
+apiVersion: 1
+providers:
+  - name: 'Air Quality Dashboards'
+    folder: ''
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
+```
+
+**Paso 3**: Iniciar el servicio
+
+```bash
+docker-compose up -d grafana
+```
+
+**Paso 4**: Acceder a Grafana
+
+- URL: http://localhost:3000
+- Usuario: admin
+- Contraseña: admin
+
+#### 5.7.2 Habilitar Backend API
+
+**Requisito**: El directorio `backend/` contiene el código de la API FastAPI.
+
+**Paso 1**: Descomentar el servicio en docker-compose.yml (líneas 53-63)
+
+**Paso 2**: Verificar que existe `backend/Dockerfile` y `backend/requirements.txt`
+
+**Paso 3**: Iniciar el servicio
+
+```bash
+docker-compose up -d backend
+```
+
+**Paso 4**: Acceder a la documentación de la API
+
+- URL: http://localhost:8000/docs (Swagger UI)
+- URL: http://localhost:8000/redoc (ReDoc)
+
+#### 5.7.3 Habilitar Frontend Dashboard
+
+**Requisito**: Requiere que el backend esté activo.
+
+**Paso 1**: Habilitar backend primero (ver 5.7.2)
+
+**Paso 2**: Descomentar el servicio frontend en docker-compose.yml (líneas 65-76)
+
+**Paso 3**: Iniciar el servicio
+
+```bash
+docker-compose up -d frontend
+```
+
+**Paso 4**: Acceder al dashboard
+
+- URL: http://localhost:8050
+
+#### 5.7.4 Iniciar servicios selectivos
+
+Puedes iniciar solo los servicios que necesites:
+
+```bash
+# Solo base de datos y app de ingesta
+docker-compose up -d db app
+
+# Base de datos, app, dbt (configuración actual)
+docker-compose up -d db app dbt
+
+# Todo incluyendo visualización
+docker-compose up -d db app dbt grafana
+
+# Pipeline completo con backend y frontend
+docker-compose up -d db app dbt backend frontend
+```
+
+### 5.8 Configuración de Variables de Entorno
+
+El proyecto utiliza un archivo `.env` para gestionar configuraciones sensibles y específicas del entorno.
+
+#### 5.8.1 Variables requeridas
+
+Crear archivo `.env` en la raíz del proyecto:
+
+```bash
+# Configuración de PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=air_quality_db
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+
+# Puerto expuesto al host (evita conflictos con PostgreSQL local)
+POSTGRES_EXTERNAL_PORT=5431
+
+# Configuración de Grafana (si está habilitado)
+GF_SECURITY_ADMIN_PASSWORD=admin
+
+# Configuración de Backend API (si está habilitado)
+DATABASE_URL=postgresql://postgres:postgres@db:5432/air_quality_db
+```
+
+#### 5.8.2 Variables opcionales
+
+```bash
+# Logs y debugging
+PYTHONUNBUFFERED=1
+LOG_LEVEL=INFO
+
+# Configuración de ingesta
+INGESTION_INTERVAL=300  # Segundos entre ejecuciones (si se automatiza)
+```
+
+#### 5.8.3 Plantilla de .env
+
+El repositorio debería incluir un archivo `.env.example`:
+
+```bash
+# Copiar el archivo de ejemplo
+cp .env.example .env
+
+# Editar según tu configuración
+nano .env  # o usar tu editor preferido
+```
+
+**Nota de seguridad**: El archivo `.env` está incluido en `.gitignore` y nunca debe subirse al repositorio para proteger credenciales.
+
+### 5.9 Gestión de Puertos
+
+#### 5.9.1 Tabla de puertos del proyecto
+
+| Servicio       | Puerto Interno | Puerto Host | Estado    | Propósito                      |
+|----------------|----------------|-------------|-----------|--------------------------------|
+| PostgreSQL     | 5432           | 5431        | Activo    | Base de datos                  |
+| Grafana        | 3000           | 3000        | Inactivo  | Visualización                  |
+| Backend API    | 8000           | 8000        | Inactivo  | API REST                       |
+| Frontend       | 8050           | 8050        | Inactivo  | Dashboard interactivo          |
+
+#### 5.9.2 Verificar disponibilidad de puertos
+
+**En Windows**:
+```bash
+netstat -ano | findstr :5431
+netstat -ano | findstr :3000
+netstat -ano | findstr :8000
+netstat -ano | findstr :8050
+```
+
+**En Linux/Mac**:
+```bash
+lsof -i :5431
+lsof -i :3000
+lsof -i :8000
+lsof -i :8050
+```
+
+Si un puerto está ocupado, no aparecerá ninguna salida.
+
+#### 5.9.3 Cambiar puertos en caso de conflicto
+
+Si un puerto está ocupado, edita `docker-compose.yml`:
+
+**Ejemplo - Cambiar puerto de PostgreSQL de 5431 a 5433**:
+```yaml
+db:
+  ports:
+    - "5433:5432"  # Cambiar el primer número (puerto host)
+```
+
+**Ejemplo - Cambiar puerto de Grafana de 3000 a 3001**:
+```yaml
+grafana:
+  ports:
+    - "3001:3000"  # Cambiar el primer número
+```
+
+**Importante**: Después de cambiar puertos, recuerda:
+1. Actualizar el archivo `.env` si es necesario
+2. Actualizar las conexiones en tu código/herramientas
+3. Reiniciar los servicios: `docker-compose restart`
+
+#### 5.9.4 Liberar puertos ocupados
+
+**Identificar qué proceso usa el puerto** (Windows):
+```bash
+netstat -ano | findstr :5431
+# La última columna muestra el PID del proceso
+```
+
+**Terminar el proceso** (Windows - ejecutar como administrador):
+```bash
+taskkill /PID <número_pid> /F
+```
+
+**En Linux/Mac**:
+```bash
+# Identificar proceso
+lsof -i :5431
+# Terminar proceso
+kill -9 <PID>
+```
+
 ---
 
 ## 6. EXTRACCIÓN Y CONSULTA DE INFORMACIÓN
@@ -785,7 +1111,285 @@ ORDER BY daily_avg_pm10 DESC
 LIMIT 5;
 ```
 
-### 6.3 Ejecución manual de transformaciones dbt
+### 6.3 Diccionario de Datos y Contaminantes
+
+Esta sección proporciona información detallada sobre los contaminantes atmosféricos monitoreados y su impacto en la salud pública.
+
+#### 6.3.1 Introducción a la Calidad del Aire
+
+La calidad del aire se mide monitoreando concentraciones de contaminantes específicos que pueden afectar la salud humana y el medio ambiente. El proyecto recopila datos de estaciones de medición que registran niveles de seis contaminantes principales, comparándolos con los límites establecidos por la Organización Mundial de la Salud (OMS) y la Unión Europea.
+
+**Unidades de medición**: Todos los contaminantes se miden en **microgramos por metro cúbico (µg/m³)**, que representa la masa del contaminante por unidad de volumen de aire.
+
+#### 6.3.2 Contaminantes Monitoreados
+
+##### NO2 (Dióxido de Nitrógeno / Nitrogen Dioxide)
+
+**Descripción**: Gas tóxico de color marrón rojizo con olor fuerte y desagradable.
+
+**Fuentes principales**:
+- Emisiones de vehículos (especialmente diésel)
+- Procesos de combustión industrial
+- Centrales eléctricas
+- Calefacción doméstica
+
+**Efectos en la salud**:
+- Corto plazo: Irritación de las vías respiratorias, tos, dificultad para respirar
+- Largo plazo: Reducción de la función pulmonar, aumento de infecciones respiratorias
+- Agravamiento de asma y enfermedades cardiovasculares
+- Especialmente peligroso para niños, ancianos y personas con enfermedades respiratorias
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Media anual: 10 µg/m³
+  - Media 24 horas: 25 µg/m³
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Media anual: 40 µg/m³
+  - Media horaria: 200 µg/m³ (no superar más de 18 veces/año)
+- **Umbral de alerta**: >400 µg/m³ (3 horas consecutivas)
+
+**Niveles típicos en áreas urbanas**: 20-90 µg/m³
+
+---
+
+##### PM10 (Material Particulado de 10 micras / Particulate Matter 10)
+
+**Descripción**: Partículas sólidas o líquidas suspendidas en el aire con diámetro menor a 10 micrómetros. Son lo suficientemente pequeñas para ser inhaladas y llegar a los pulmones.
+
+**Fuentes principales**:
+- Combustión de combustibles fósiles (vehículos, industria)
+- Polvo de construcción y demolición
+- Erosión del suelo y resuspensión de polvo de carreteras
+- Polen y esporas (fuentes naturales)
+- Desgaste de neumáticos y frenos
+
+**Efectos en la salud**:
+- Las partículas pueden penetrar hasta los pulmones
+- Problemas respiratorios: bronquitis, asma, reducción de capacidad pulmonar
+- Efectos cardiovasculares: aumento de presión arterial, infartos
+- Mortalidad prematura en personas con enfermedades cardiopulmonares
+- Pueden transportar sustancias tóxicas adheridas (metales pesados, compuestos orgánicos)
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Media anual: 15 µg/m³
+  - Media 24 horas: 45 µg/m³
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Media anual: 40 µg/m³
+  - Media 24 horas: 50 µg/m³ (no superar más de 35 veces/año)
+
+**Niveles típicos en áreas urbanas**: 20-70 µg/m³
+
+---
+
+##### PM2.5 (Material Particulado de 2.5 micras / Particulate Matter 2.5)
+
+**Descripción**: Partículas finas con diámetro menor a 2.5 micrómetros. Son extremadamente pequeñas (aproximadamente 1/30 del grosor de un cabello humano) y más peligrosas que PM10 porque pueden penetrar más profundamente en el sistema respiratorio.
+
+**Fuentes principales**:
+- Emisiones vehicular (especialmente motores diésel)
+- Combustión de biomasa y madera
+- Procesos industriales (fundiciones, refinerías)
+- Formación secundaria en la atmósfera por reacciones químicas
+- Incendios forestales
+- Humo de tabaco
+
+**Efectos en la salud** (más graves que PM10):
+- Penetración profunda hasta los alvéolos pulmonares
+- Paso al torrente sanguíneo, afectando todos los órganos
+- Enfermedades cardíacas: infartos, arritmias, insuficiencia cardíaca
+- Accidentes cerebrovasculares (ACV)
+- Cáncer de pulmón (clasificado como carcinógeno por la OMS)
+- Desarrollo de diabetes tipo 2
+- Efectos en embarazo: bajo peso al nacer, parto prematuro
+- Deterioro cognitivo y demencia en adultos mayores
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Media anual: 5 µg/m³
+  - Media 24 horas: 15 µg/m³
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Media anual: 25 µg/m³ (objetivo: 20 µg/m³ para 2030)
+
+**Niveles típicos en áreas urbanas**: 10-35 µg/m³
+
+**Nota importante**: PM2.5 es considerado el contaminante atmosférico más peligroso para la salud humana según la OMS.
+
+---
+
+##### SO2 (Dióxido de Azufre / Sulfur Dioxide)
+
+**Descripción**: Gas incoloro con olor penetrante e irritante.
+
+**Fuentes principales**:
+- Combustión de combustibles fósiles con contenido de azufre (carbón, petróleo)
+- Refinerías de petróleo
+- Industrias metalúrgicas (fundición de metales)
+- Erupciones volcánicas (fuente natural)
+
+**Efectos en la salud**:
+- Irritación del sistema respiratorio
+- Dificultad para respirar, especialmente en asmáticos
+- Inflamación de las vías respiratorias
+- Agravamiento de enfermedades cardiovasculares
+- Contribuye a la formación de partículas finas (PM2.5 secundario)
+
+**Efectos ambientales**:
+- Principal causante de lluvia ácida
+- Daño a vegetación y ecosistemas
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Media 24 horas: 40 µg/m³
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Media diaria: 125 µg/m³ (no superar más de 3 veces/año)
+  - Media horaria: 350 µg/m³ (no superar más de 24 veces/año)
+- **Umbral de alerta**: >500 µg/m³ (3 horas consecutivas)
+
+**Niveles típicos en áreas urbanas**: 5-50 µg/m³ (en descenso debido a regulaciones sobre azufre en combustibles)
+
+---
+
+##### O3 (Ozono Troposférico / Tropospheric Ozone)
+
+**Descripción**: Gas altamente reactivo. A diferencia del ozono estratosférico (que nos protege de radiación UV), el ozono troposférico a nivel del suelo es un contaminante perjudicial.
+
+**Fuentes**:
+- No se emite directamente, se forma por reacciones fotoquímicas
+- Reacción entre NOx (óxidos de nitrógeno) y COV (compuestos orgánicos volátiles) bajo luz solar
+- Niveles más altos en verano y en horas de máxima radiación solar (mediodía-tarde)
+
+**Efectos en la salud**:
+- Irritación de ojos y vías respiratorias
+- Reducción de la función pulmonar
+- Agravamiento de asma y enfermedades respiratorias
+- Inflamación pulmonar
+- Mayor susceptibilidad a infecciones respiratorias
+- Efectos cardiovasculares en exposiciones prolongadas
+
+**Efectos ambientales**:
+- Daño a cultivos y vegetación
+- Reducción de productividad agrícola
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Pico estacional: 60 µg/m³ (media 8 horas)
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Valor objetivo: 120 µg/m³ (media 8 horas, no superar más de 25 días/año)
+  - Umbral de información: 180 µg/m³ (media horaria)
+  - Umbral de alerta: 240 µg/m³ (media horaria)
+
+**Niveles típicos en áreas urbanas**:
+- Invierno: 20-50 µg/m³
+- Verano: 80-180 µg/m³ (puede superar límites en episodios de calor)
+
+**Particularidad**: Es el único contaminante que aumenta en áreas alejadas del tráfico (parques, zonas residenciales) porque en zonas de tráfico intenso, el NO emitido por vehículos consume el O3.
+
+---
+
+##### CO (Monóxido de Carbono / Carbon Monoxide)
+
+**Descripción**: Gas incoloro, inodoro e insípido, lo que lo hace particularmente peligroso.
+
+**Fuentes principales**:
+- Combustión incompleta de combustibles (gasolina, diésel, gas, madera)
+- Emisiones vehiculares (especialmente en arranques en frío y atascos)
+- Calefacciones y calderas mal ajustadas
+- Humo de tabaco
+
+**Efectos en la salud**:
+- Se une a la hemoglobina en la sangre, reduciendo el transporte de oxígeno
+- Dolores de cabeza, mareos, náuseas en exposiciones bajas
+- Pérdida de conciencia y muerte en exposiciones altas (intoxicación)
+- Efectos cardiovasculares: aumento del riesgo de infarto
+- Afectación del desarrollo fetal en embarazadas
+- Reducción de reflejos y capacidad cognitiva
+
+**Límites de referencia**:
+- **OMS (2021)**:
+  - Media 24 horas: 4 mg/m³ (4000 µg/m³)
+  - Media 8 horas: 10 mg/m³ (10000 µg/m³)
+  - Media 1 hora: 35 mg/m³ (35000 µg/m³)
+- **Unión Europea (Directiva 2008/50/CE)**:
+  - Máximo diario de media 8 horas: 10 mg/m³
+
+**Niveles típicos en áreas urbanas**: 0.5-5 mg/m³
+
+**Nota**: Los niveles de CO han disminuido significativamente en las últimas décadas debido a mejoras en tecnología automotriz (catalizadores).
+
+---
+
+#### 6.3.3 Índices de Calidad del Aire
+
+Muchas estaciones proporcionan un **Índice de Calidad del Aire (ICA)** que resume la calidad general:
+
+| Índice | Calificación | Color | Implicaciones para la salud |
+|--------|--------------|-------|------------------------------|
+| 0-50   | Buena        | Verde | Calidad del aire satisfactoria, sin riesgo |
+| 51-100 | Moderada     | Amarillo | Aceptable para la mayoría, sensibilidad en personas muy sensibles |
+| 101-150 | Insalubre para grupos sensibles | Naranja | Grupos sensibles pueden experimentar efectos |
+| 151-200 | Insalubre | Rojo | Población general puede experimentar efectos |
+| 201-300 | Muy insalubre | Morado | Alerta sanitaria, todos pueden experimentar efectos graves |
+| 301+ | Peligrosa | Granate | Emergencia sanitaria, todos afectados |
+
+**Grupos sensibles**:
+- Niños y ancianos
+- Personas con enfermedades respiratorias (asma, EPOC, bronquitis)
+- Personas con enfermedades cardiovasculares
+- Mujeres embarazadas
+- Personas que realizan actividad física intensa al aire libre
+
+#### 6.3.4 Frecuencia de Actualización de Datos
+
+**Valencia API**:
+- Actualización: Cada hora (aproximadamente)
+- Campo de timestamp: `fecha_carg`
+- Incluye: Mediciones en tiempo casi real de todas las estaciones activas
+
+**Ciclo de transformación del proyecto**:
+- Ingesta: Una ejecución manual o programada
+- Transformaciones dbt: Cada 5 minutos
+- Los datos en las tablas `marts` reflejan agregaciones horarias y diarias actualizadas
+
+#### 6.3.5 Interpretación de Valores Nulos
+
+En los datos pueden aparecer valores `NULL` por varios motivos:
+- **Mantenimiento de sensores**: Calibración o reparación del equipo
+- **Fallo técnico**: Sensor temporal o permanentemente fuera de servicio
+- **Contaminante no medido**: No todas las estaciones miden todos los contaminantes
+- **Datos aún no disponibles**: Para mediciones muy recientes
+
+**Recomendación**: Al analizar datos, siempre filtrar o manejar adecuadamente los valores nulos para evitar conclusiones erróneas.
+
+#### 6.3.6 Campos Adicionales en las Tablas
+
+**Campos de metadatos**:
+- `station_id`: Identificador único de la estación de medición
+- `station_name`: Nombre descriptivo de la estación (ubicación)
+- `city`: Ciudad de origen de los datos (Valencia, Madrid, etc.)
+- `measure_timestamp`: Momento exacto de la medición
+- `ingested_at`: Momento en que los datos se ingresaron en la base de datos (auditoría)
+
+**Campos calculados en marts**:
+- `daily_avg_*`: Promedio diario del contaminante
+- `max_*_peak`: Valor máximo registrado en el período
+- `measure_date`: Fecha sin componente de hora (para agregaciones diarias)
+
+#### 6.3.7 Referencias y Recursos Adicionales
+
+**Organizaciones y documentación**:
+- [Organización Mundial de la Salud (OMS) - Calidad del Aire](https://www.who.int/health-topics/air-pollution)
+- [Agencia Europea de Medio Ambiente](https://www.eea.europa.eu/themes/air)
+- [Ministerio para la Transición Ecológica - España](https://www.miteco.gob.es/es/calidad-y-evaluacion-ambiental/temas/atmosfera-y-calidad-del-aire/)
+
+**Directivas y normativas**:
+- Directiva 2008/50/CE del Parlamento Europeo sobre calidad del aire ambiente
+- WHO Global Air Quality Guidelines (2021)
+- Real Decreto 102/2011 sobre mejora de la calidad del aire (España)
+
+---
+
+### 6.4 Ejecución manual de transformaciones dbt
 
 Acceder al contenedor dbt:
 ```bash
@@ -812,7 +1416,13 @@ dbt test
 dbt docs generate
 ```
 
-### 6.4 Acceso a Grafana
+### 6.5 Acceso a Grafana
+
+⚠️ **Esta sección aplica solo si has habilitado el servicio Grafana** (ver sección 5.7.1 para instrucciones de activación).
+
+**Estado actual**: Grafana está deshabilitado por defecto. Para usar esta funcionalidad, primero debes descomentar el servicio en docker-compose.yml y crear los archivos de provisionamiento.
+
+**Pasos para acceder** (una vez habilitado):
 
 1. Abrir navegador en http://localhost:3000
 2. Introducir credenciales:
@@ -822,54 +1432,71 @@ dbt docs generate
 4. Navegar a Connections > Data sources para verificar conexión a PostgreSQL
 5. Crear dashboards consultando esquema marts
 
+**Alternativa actual**: Mientras Grafana esté deshabilitado, puedes explorar los datos mediante consultas SQL directas (ver sección 6.2).
+
 ---
 
 ## 7. ESTRUCTURA DE DIRECTORIOS
 
 ```
 Data-Project-1-Calidad-del-aire/
-├── app/
+├── app/                          # [ACTIVO] Aplicación de ingestión Python
 │   ├── ingestion/
 │   │   ├── __init__.py
-│   │   ├── valencia.py
-│   │   └── madrid.py
-│   ├── config.py
-│   ├── database.py
-│   ├── main.py
-│   ├── utils.py
-│   └── Dockerfile
-├── dbt/
+│   │   ├── valencia.py           # Ingesta de Valencia (activa)
+│   │   └── madrid.py             # Ingesta de Madrid (inactiva)
+│   ├── config.py                 # Configuración de ciudades y BD
+│   ├── database.py               # Funciones de conexión y creación de tablas
+│   ├── main.py                   # Orquestador principal
+│   ├── utils.py                  # Funciones auxiliares (llamadas API)
+│   ├── requirements.txt          # Dependencias Python
+│   └── Dockerfile                # Imagen Docker para ingesta
+├── dbt/                          # [ACTIVO] Transformaciones dbt
 │   ├── air_quality_dbt/
 │   │   ├── models/
 │   │   │   ├── staging/
-│   │   │   │   ├── sources.yml
-│   │   │   │   └── stg_valencia_air.sql
+│   │   │   │   ├── sources.yml   # Definición de fuentes raw
+│   │   │   │   └── stg_valencia_air.sql  # Vista staging de Valencia
 │   │   │   ├── intermediate/
-│   │   │   │   └── int_air_quality_union.sql
+│   │   │   │   └── int_air_quality_union.sql  # Unión multi-ciudad
 │   │   │   └── marts/
-│   │   │       ├── fct_air_quality_daily.sql
-│   │   │       ├── fct_air_quality_hourly.sql
-│   │   │       └── marts.yml
-│   │   ├── profiles.yml
-│   │   └── dbt_project.yml
-│   └── main.py
-├── backend/
-│   ├── database.py
-│   ├── main.py
-│   └── Dockerfile
-├── frontend/
-│   ├── app.py
-│   └── Dockerfile
-├── grafana/
+│   │   │       ├── fct_air_quality_daily.sql   # Agregación diaria
+│   │   │       ├── fct_air_quality_hourly.sql  # Agregación horaria
+│   │   │       └── marts.yml     # Tests y documentación
+│   │   ├── profiles.yml          # Configuración de conexión a PostgreSQL
+│   │   └── dbt_project.yml       # Configuración del proyecto dbt
+│   └── Dockerfile                # Imagen Docker para dbt
+├── backend/                      # [INACTIVO] API REST FastAPI
+│   ├── database.py               # Conexión a BD
+│   ├── main.py                   # Endpoints de la API
+│   ├── requirements.txt          # Dependencias FastAPI
+│   └── Dockerfile                # Imagen Docker para backend
+├── frontend/                     # [INACTIVO] Dashboard Dash/Plotly
+│   ├── app.py                    # Aplicación Dash
+│   ├── requirements.txt          # Dependencias Dash/Plotly
+│   └── Dockerfile                # Imagen Docker para frontend
+├── grafana/                      # [INACTIVO] Visualización Grafana
 │   ├── provisioning/
-│   │   ├── datasources/
-│   │   └── dashboards/
-│   └── dashboards/
-├── .env
-├── .gitignore
-├── docker-compose.yml
-└── README.md
+│   │   ├── datasources/          # (vacío) Requiere crear datasource.yml
+│   │   └── dashboards/           # (vacío) Requiere crear dashboards.yml
+│   └── dashboards/               # (vacío) Archivos JSON de dashboards
+├── z_Documentacion/              # Documentación del proyecto
+│   ├── DOCUMENTACION_TECNICA.md  # Este documento
+│   └── *.png                     # Capturas de pantalla del despliegue
+├── .env                          # Variables de entorno (no en Git)
+├── .gitignore                    # Archivos excluidos del repositorio
+├── docker-compose.yml            # Orquestación de servicios Docker
+└── README.md                     # Documentación principal del proyecto
 ```
+
+**Leyenda**:
+- **[ACTIVO]**: Servicio habilitado y en funcionamiento
+- **[INACTIVO]**: Código implementado pero servicio deshabilitado en docker-compose.yml
+
+**Notas sobre directorios inactivos**:
+- `backend/` y `frontend/`: Código completo pero comentado en docker-compose.yml (líneas 53-76)
+- `grafana/`: Directorio existe pero falta configuración de provisionamiento; servicio comentado (líneas 37-51)
+- Para habilitar servicios inactivos, ver sección 5.7
 
 ---
 
@@ -933,10 +1560,39 @@ Para integrar una nueva ciudad:
 
 ### 9.2 Automatización de ingesta
 
-Actualmente la app se ejecuta una vez. Posibles mejoras:
-- Añadir bucle con sleep() en main.py
-- Usar cron dentro del contenedor
-- Implementar Airflow para orquestación compleja
+**Estado actual**: La aplicación de ingesta se ejecuta una sola vez y termina (no tiene política de reinicio automático en docker-compose.yml).
+
+**Opciones para automatizar la ingesta periódica**:
+
+1. **Añadir política de reinicio en Docker** (más simple):
+   ```yaml
+   app:
+     restart: always  # o 'on-failure'
+   ```
+   Luego añadir sleep al final de main.py:
+   ```python
+   import time
+   time.sleep(300)  # Esperar 5 minutos antes de terminar
+   ```
+
+2. **Implementar bucle infinito en main.py**:
+   ```python
+   while True:
+       orquestador()
+       time.sleep(300)  # 5 minutos
+   ```
+
+3. **Usar cron dentro del contenedor**:
+   - Instalar cron en el Dockerfile
+   - Configurar crontab para ejecutar main.py periódicamente
+   - Mantener contenedor corriendo con un proceso persistente
+
+4. **Scheduler externo** (más complejo pero más robusto):
+   - Implementar Apache Airflow para orquestación avanzada
+   - Configurar DAGs con dependencias y manejo de errores
+   - Monitoreo y alertas integrados
+
+**Recomendación**: Para producción, la opción 2 (bucle infinito) es la más simple y efectiva. Para entornos más complejos con múltiples pipelines, Airflow es preferible.
 
 ### 9.3 Alertas y notificaciones
 
@@ -947,17 +1603,47 @@ Implementar sistema de alertas cuando:
 
 ### 9.4 API REST (backend comentado)
 
-El docker-compose incluye un servicio backend comentado que podría:
-- Exponer endpoints REST para consultar datos
-- Servir de intermediario entre frontend y base de datos
-- Implementar autenticación y autorización
+**Estado actual**: El código del backend está implementado en el directorio `backend/` pero el servicio está deshabilitado en docker-compose.yml (líneas 53-63).
+
+**Funcionalidad implementada**:
+- API REST con FastAPI
+- Endpoints para consultar datos de calidad del aire
+- Conexión directa a PostgreSQL
+- Documentación automática con Swagger/ReDoc
+
+**Para habilitar**:
+1. Descomentar líneas 53-63 en docker-compose.yml
+2. Ejecutar `docker-compose up -d backend`
+3. Acceder a http://localhost:8000/docs
+
+**Mejoras sugeridas**:
+- Implementar autenticación (JWT, API keys)
+- Añadir endpoints para filtrado avanzado (por fecha, estación, contaminante)
+- Implementar paginación para resultados grandes
+- Añadir caché para consultas frecuentes
+- Rate limiting para prevenir abuso
 
 ### 9.5 Frontend interactivo
 
-El servicio frontend comentado podría:
-- Crear dashboards personalizados con Dash/Plotly
-- Permitir selección dinámica de estaciones
-- Mostrar mapas con geolocalización de estaciones
+**Estado actual**: El código del frontend está implementado en el directorio `frontend/` pero el servicio está deshabilitado en docker-compose.yml (líneas 65-76).
+
+**Tecnología**: Dashboard interactivo con Dash/Plotly
+
+**Dependencias**: Requiere que el servicio backend esté activo (conecta a http://backend:8000)
+
+**Para habilitar**:
+1. Habilitar backend primero (ver 9.4)
+2. Descomentar líneas 65-76 en docker-compose.yml
+3. Ejecutar `docker-compose up -d frontend`
+4. Acceder a http://localhost:8050
+
+**Funcionalidades propuestas**:
+- Dashboards personalizados con gráficos de Plotly
+- Selección dinámica de estaciones y contaminantes
+- Mapas interactivos con geolocalización de estaciones
+- Comparación entre ciudades y periodos temporales
+- Exportación de datos y gráficos
+- Alertas visuales cuando se superan umbrales
 
 ---
 
@@ -974,3 +1660,650 @@ Este proyecto implementa una arquitectura moderna de pipeline de datos que:
 - Implementa mejores prácticas de ingeniería de datos
 
 La separación en capas (raw, staging, intermediate, marts) permite que diferentes perfiles técnicos trabajen en distintas fases del pipeline sin interferencias, y facilita el debugging al poder inspeccionar datos en cada etapa de transformación.
+
+---
+
+## 11. RESOLUCIÓN DE PROBLEMAS (TROUBLESHOOTING)
+
+Esta sección proporciona soluciones a problemas comunes que pueden surgir durante el despliegue y operación del sistema.
+
+### 11.1 Problemas Comunes de Inicio
+
+#### Error: "port is already allocated"
+
+**Síntoma**:
+```
+Error starting userland proxy: listen tcp 0.0.0.0:5431: bind: address already in use
+```
+
+**Diagnóstico**: Otro servicio está usando el puerto especificado.
+
+**Soluciones**:
+
+1. **Identificar qué proceso usa el puerto**:
+   ```bash
+   # Windows
+   netstat -ano | findstr :5431
+
+   # Linux/Mac
+   lsof -i :5431
+   ```
+
+2. **Opción A - Detener el servicio conflictivo**:
+   - Si es PostgreSQL local, detenerlo temporalmente
+   - Windows: Services > PostgreSQL > Stop
+   - Linux/Mac: `sudo systemctl stop postgresql`
+
+3. **Opción B - Cambiar el puerto en docker-compose.yml**:
+   ```yaml
+   db:
+     ports:
+       - "5433:5432"  # Usar puerto 5433 en lugar de 5431
+   ```
+
+4. **Reiniciar servicios**:
+   ```bash
+   docker-compose down
+   docker-compose up -d
+   ```
+
+#### Error: "connection refused" cuando app conecta a db
+
+**Síntoma**:
+```
+psycopg.OperationalError: connection to server at "db" (172.18.0.2), port 5432 failed: Connection refused
+```
+
+**Diagnóstico**: PostgreSQL no está completamente listo cuando la app intenta conectar.
+
+**Soluciones**:
+
+1. **Aumentar tiempo de espera en app/main.py**:
+   ```python
+   time.sleep(10)  # Cambiar de 5 a 10 segundos
+   ```
+
+2. **Añadir health check en docker-compose.yml**:
+   ```yaml
+   db:
+     healthcheck:
+       test: ["CMD-SHELL", "pg_isready -U postgres"]
+       interval: 5s
+       timeout: 5s
+       retries: 5
+
+   app:
+     depends_on:
+       db:
+         condition: service_healthy
+   ```
+
+3. **Verificar que db está corriendo**:
+   ```bash
+   docker-compose ps
+   # db debe mostrar "Up" en STATUS
+   ```
+
+#### App se detiene con código de salida 1
+
+**Síntoma**:
+```bash
+docker-compose ps
+# Muestra: app  Exited (1)
+```
+
+**Diagnóstico**: La aplicación encontró un error durante la ejecución.
+
+**Solución - Revisar logs**:
+```bash
+docker-compose logs app
+
+# Buscar líneas con ERROR o Exception
+```
+
+**Causas comunes**:
+- API externa no disponible: Verificar conectividad a internet
+- Credenciales incorrectas: Revisar archivo .env
+- Error en código Python: Revisar stack trace en logs
+
+### 11.2 Problemas de Ingesta de Datos
+
+#### No hay datos en tablas raw
+
+**Verificación**:
+```bash
+docker-compose exec db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) FROM raw.valencia_air;"
+# Si devuelve 0, no hay datos
+```
+
+**Soluciones**:
+
+1. **Verificar que la API es accesible**:
+   ```bash
+   # Probar URL de Valencia en navegador o curl
+   curl "https://valencia.opendatasoft.com/api/records/1.0/search/?dataset=estacions-contaminacio-atmosferiques-uvf"
+   ```
+
+2. **Revisar logs de app para errores HTTP**:
+   ```bash
+   docker-compose logs app | grep -i "error\|exception\|failed"
+   ```
+
+3. **Verificar que Valencia está activa en config.py**:
+   ```python
+   "valencia": {
+       "active": True,  # Debe ser True
+       ...
+   }
+   ```
+
+4. **Ejecutar app manualmente para debugging**:
+   ```bash
+   docker-compose run --rm app python main.py
+   ```
+
+#### Datos en raw pero no en staging/marts
+
+**Verificación**:
+```bash
+# Verificar staging
+docker-compose exec db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) FROM staging.stg_valencia_air;"
+
+# Verificar marts
+docker-compose exec db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) FROM marts.fct_air_quality_daily;"
+```
+
+**Soluciones**:
+
+1. **Verificar que dbt está corriendo**:
+   ```bash
+   docker-compose ps dbt
+   # Debe mostrar "Up"
+   ```
+
+2. **Revisar logs de dbt**:
+   ```bash
+   docker-compose logs dbt
+   # Buscar errores SQL o de compilación
+   ```
+
+3. **Ejecutar dbt manualmente**:
+   ```bash
+   docker-compose exec dbt dbt run
+   # Ver si hay errores específicos en los modelos
+   ```
+
+4. **Verificar que las tablas raw existen**:
+   ```bash
+   docker-compose exec db psql -U postgres -d air_quality_db -c "\dt raw.*"
+   ```
+
+### 11.3 Problemas de Transformaciones dbt
+
+#### Modelos dbt fallando
+
+**Síntoma**:
+```
+Completed with 1 error and 0 warnings:
+Failure in model stg_valencia_air
+```
+
+**Soluciones**:
+
+1. **Verificar sintaxis SQL del modelo**:
+   - Abrir el archivo .sql del modelo que falla
+   - Buscar errores de sintaxis (comas faltantes, paréntesis, etc.)
+
+2. **Ejecutar solo el modelo problemático**:
+   ```bash
+   docker-compose exec dbt dbt run --select stg_valencia_air
+   ```
+
+3. **Verificar que las fuentes existen**:
+   ```bash
+   docker-compose exec dbt dbt run --select source:air_quality+
+   ```
+
+4. **Comprobar conexión a base de datos**:
+   ```bash
+   docker-compose exec dbt dbt debug
+   # Debe mostrar "All checks passed!"
+   ```
+
+#### Schemas no se crean automáticamente
+
+**Verificación**:
+```bash
+docker-compose exec db psql -U postgres -d air_quality_db -c "\dn"
+# Debería mostrar: raw, staging, intermediate, marts
+```
+
+**Solución**:
+```bash
+# Crear schemas manualmente
+docker-compose exec db psql -U postgres -d air_quality_db <<EOF
+CREATE SCHEMA IF NOT EXISTS raw;
+CREATE SCHEMA IF NOT EXISTS staging;
+CREATE SCHEMA IF NOT EXISTS intermediate;
+CREATE SCHEMA IF NOT EXISTS marts;
+EOF
+```
+
+#### Tests de dbt fallando
+
+**Ejecutar tests**:
+```bash
+docker-compose exec dbt dbt test
+```
+
+**Interpretar resultados**:
+- `PASS`: Test exitoso
+- `FAIL`: Datos no cumplen la regla (ej: valores nulos en columna not_null)
+- `ERROR`: Error en la definición del test
+
+**Solución para tests fallidos**:
+- Revisar datos en la tabla: `SELECT * FROM <tabla> WHERE <condición_test>`
+- Ajustar la definición del test en .yml si es demasiado restrictivo
+- Limpiar datos incorrectos en raw si es un problema de calidad de datos
+
+### 11.4 Problemas de Base de Datos
+
+#### No se puede conectar a PostgreSQL
+
+**Verificación**:
+```bash
+# Intentar conexión
+psql -h localhost -p 5431 -U postgres -d air_quality_db
+```
+
+**Soluciones**:
+
+1. **Verificar que el contenedor está corriendo**:
+   ```bash
+   docker-compose ps db
+   # Debe mostrar "Up"
+   ```
+
+2. **Revisar mapeo de puertos**:
+   ```bash
+   docker-compose ps
+   # Debe mostrar: 0.0.0.0:5431->5432/tcp
+   ```
+
+3. **Probar conexión desde dentro del contenedor**:
+   ```bash
+   docker-compose exec db psql -U postgres -d air_quality_db
+   # Si funciona, el problema es el mapeo de puertos
+   ```
+
+4. **Verificar credenciales en .env**:
+   ```bash
+   cat .env | grep POSTGRES
+   ```
+
+5. **Reiniciar servicio de base de datos**:
+   ```bash
+   docker-compose restart db
+   ```
+
+#### Tablas desaparecen después de reiniciar
+
+**Síntoma**: Después de `docker-compose down`, los datos se pierden.
+
+**Causa**: Se usó `docker-compose down -v`, que elimina volúmenes.
+
+**Prevención**:
+```bash
+# Usar siempre sin -v para preservar datos
+docker-compose down
+
+# Solo usar -v cuando quieras reset completo
+docker-compose down -v  # ⚠️ ESTO BORRA TODOS LOS DATOS
+```
+
+**Recuperación**:
+- No hay recuperación automática
+- Necesitas re-ejecutar ingesta: `docker-compose run --rm app python main.py`
+- dbt regenerará staging/intermediate/marts automáticamente
+
+#### Error: Disco lleno / Out of disk space
+
+**Verificación**:
+```bash
+# Ver uso de espacio de volúmenes Docker
+docker system df -v
+```
+
+**Soluciones**:
+
+1. **Limpiar contenedores y volúmenes no usados**:
+   ```bash
+   docker system prune -a
+   # CUIDADO: Esto elimina contenedores, imágenes y volúmenes no usados
+   ```
+
+2. **Eliminar solo volúmenes huérfanos**:
+   ```bash
+   docker volume prune
+   ```
+
+3. **Verificar tamaño de base de datos**:
+   ```bash
+   docker-compose exec db psql -U postgres -d air_quality_db -c "
+   SELECT
+       schemaname,
+       tablename,
+       pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+   FROM pg_tables
+   WHERE schemaname IN ('raw', 'staging', 'intermediate', 'marts')
+   ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+   "
+   ```
+
+4. **Implementar política de retención de datos**:
+   - Eliminar datos raw antiguos (> 90 días)
+   - Archivar datos históricos en almacenamiento externo
+
+### 11.5 Verificación del Sistema
+
+Comandos para verificar que el pipeline completo funciona correctamente:
+
+#### Script de verificación completa
+
+```bash
+#!/bin/bash
+echo "=== VERIFICACIÓN DEL SISTEMA DE CALIDAD DEL AIRE ==="
+
+echo -e "\n1. Verificar servicios Docker..."
+docker-compose ps
+
+echo -e "\n2. Verificar datos en capa RAW..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) as raw_count FROM raw.valencia_air;"
+
+echo -e "\n3. Verificar datos en capa STAGING..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) as staging_count FROM staging.stg_valencia_air;"
+
+echo -e "\n4. Verificar datos en capa INTERMEDIATE..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) as intermediate_count FROM intermediate.int_air_quality_union;"
+
+echo -e "\n5. Verificar datos en capa MARTS (daily)..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) as marts_daily_count FROM marts.fct_air_quality_daily;"
+
+echo -e "\n6. Verificar datos en capa MARTS (hourly)..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT COUNT(*) as marts_hourly_count FROM marts.fct_air_quality_hourly;"
+
+echo -e "\n7. Último registro ingresado..."
+docker-compose exec -T db psql -U postgres -d air_quality_db -c "SELECT MAX(timestamp) as last_ingestion FROM raw.valencia_air;"
+
+echo -e "\n=== VERIFICACIÓN COMPLETADA ==="
+```
+
+**Resultados esperados**:
+- Todos los servicios activos (db=Up, app=Exited(0), dbt=Up)
+- raw_count > 0 (hay datos crudos)
+- staging_count = raw_count (todos los datos procesados)
+- intermediate_count ≥ staging_count
+- marts_daily_count > 0
+- marts_hourly_count > 0
+- last_ingestion es una fecha reciente
+
+### 11.6 Logs y Depuración
+
+#### Niveles de logging y cómo acceder
+
+**Ver logs en tiempo real**:
+```bash
+# Todos los servicios
+docker-compose logs -f
+
+# Solo app
+docker-compose logs -f app
+
+# Solo dbt
+docker-compose logs -f dbt
+
+# Últimas 100 líneas
+docker-compose logs --tail=100 app
+```
+
+**Buscar errores específicos**:
+```bash
+# Buscar errores HTTP
+docker-compose logs app | grep -i "http.*error\|status.*[45]"
+
+# Buscar excepciones Python
+docker-compose logs app | grep -i "exception\|traceback"
+
+# Buscar errores SQL en dbt
+docker-compose logs dbt | grep -i "error\|failed"
+```
+
+#### Habilitar modo debug en Python
+
+Editar `app/main.py` y añadir logging:
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Usar en el código
+logger.debug("Mensaje de debug detallado")
+logger.info("Información general")
+logger.error("Error ocurrido")
+```
+
+Luego reconstruir:
+```bash
+docker-compose build app
+docker-compose up -d app
+```
+
+#### Interpretar logs de dbt
+
+**Ejemplo de log exitoso**:
+```
+Running with dbt=1.8.2
+Found 5 models, 3 tests, 0 snapshots, 0 analyses, 0 macros
+Completed successfully
+```
+
+**Ejemplo de log con error**:
+```
+Runtime Error in model stg_valencia_air
+  column "fecha_carg" does not exist
+```
+
+**Acción**: Revisar el modelo SQL y corregir nombre de columna.
+
+### 11.7 Problemas de Rendimiento
+
+#### Transformaciones dbt tardan mucho
+
+**Diagnóstico**:
+```bash
+# Medir tiempo de ejecución
+time docker-compose exec dbt dbt run
+```
+
+**Soluciones**:
+
+1. **Verificar tamaño de tablas**:
+   ```bash
+   docker-compose exec db psql -U postgres -d air_quality_db -c "
+   SELECT COUNT(*) FROM raw.valencia_air;
+   "
+   ```
+
+2. **Añadir índices a tablas raw**:
+   ```sql
+   CREATE INDEX IF NOT EXISTS idx_valencia_air_timestamp
+   ON raw.valencia_air(timestamp);
+
+   CREATE INDEX IF NOT EXISTS idx_valencia_air_station
+   ON raw.valencia_air(station_id);
+   ```
+
+3. **Optimizar queries SQL en modelos dbt**:
+   - Evitar SELECT *
+   - Filtrar datos temprano en CTEs
+   - Usar índices apropiados
+
+4. **Aumentar recursos de Docker**:
+   - Docker Desktop > Settings > Resources
+   - Aumentar CPU y Memoria
+
+#### Base de datos consumiendo mucha memoria
+
+**Verificación**:
+```bash
+docker stats db
+# Ver columna MEM USAGE
+```
+
+**Soluciones**:
+
+1. **Ajustar configuración de PostgreSQL**:
+   Crear archivo `postgresql.conf` y montarlo:
+   ```yaml
+   db:
+     volumes:
+       - ./postgresql.conf:/etc/postgresql/postgresql.conf
+   ```
+
+2. **Implementar limpieza automática (VACUUM)**:
+   ```sql
+   VACUUM ANALYZE raw.valencia_air;
+   ```
+
+3. **Políticas de retención de datos**:
+   - Eliminar datos antiguos automáticamente
+   - Archivar datos históricos
+
+### 11.8 Reinicios y Recuperación
+
+#### Reiniciar servicio individual
+
+```bash
+# Reiniciar solo la app
+docker-compose restart app
+
+# Reiniciar solo dbt
+docker-compose restart dbt
+
+# Reiniciar base de datos (⚠️ cuidado con conexiones activas)
+docker-compose restart db
+```
+
+#### Reconstruir después de cambios en código
+
+**Flujo completo**:
+```bash
+# 1. Detener servicios
+docker-compose down
+
+# 2. Reconstruir imágenes
+docker-compose build
+
+# 3. Iniciar con nuevas imágenes
+docker-compose up -d
+
+# 4. Verificar logs
+docker-compose logs -f app
+```
+
+**Solo reconstruir servicio específico**:
+```bash
+docker-compose build app
+docker-compose up -d app
+```
+
+#### Recuperación de estado corrupto
+
+**Síntomas**:
+- Servicios en estado inconsistente
+- Errores extraños sin causa clara
+- Datos duplicados o inconsistentes
+
+**Solución - Reset completo** (⚠️ BORRA TODOS LOS DATOS):
+```bash
+# 1. Detener y eliminar todo
+docker-compose down -v
+
+# 2. Eliminar imágenes locales
+docker-compose rm -f
+
+# 3. Reconstruir desde cero
+docker-compose build --no-cache
+
+# 4. Iniciar limpio
+docker-compose up -d
+
+# 5. Re-ingestar datos
+docker-compose run --rm app python main.py
+
+# 6. Verificar sistema
+docker-compose logs -f dbt
+```
+
+#### Backup y restauración de base de datos
+
+**Crear backup**:
+```bash
+docker-compose exec db pg_dump -U postgres air_quality_db > backup_$(date +%Y%m%d).sql
+```
+
+**Restaurar backup**:
+```bash
+# 1. Crear base de datos limpia
+docker-compose exec db psql -U postgres -c "DROP DATABASE IF EXISTS air_quality_db;"
+docker-compose exec db psql -U postgres -c "CREATE DATABASE air_quality_db;"
+
+# 2. Restaurar datos
+cat backup_20260119.sql | docker-compose exec -T db psql -U postgres air_quality_db
+```
+
+### 11.9 Problemas Específicos de Grafana, Backend, Frontend
+
+#### Grafana no inicia después de descomentarlo
+
+**Verificación**:
+```bash
+docker-compose logs grafana
+```
+
+**Causas comunes**:
+- Archivos de provisionamiento faltantes
+- Puerto 3000 ocupado
+- Volumen corrupto
+
+**Soluciones**:
+1. Crear archivos de provisionamiento (ver sección 5.7.1)
+2. Cambiar puerto en docker-compose.yml
+3. Eliminar volumen: `docker volume rm <project>_grafana_data`
+
+#### Backend API no responde
+
+**Verificación**:
+```bash
+curl http://localhost:8000/docs
+```
+
+**Soluciones**:
+1. Verificar que backend está corriendo: `docker-compose ps backend`
+2. Revisar logs: `docker-compose logs backend`
+3. Verificar conexión a base de datos en variables de entorno
+
+#### Frontend no puede conectar al backend
+
+**Síntoma**: Error de conexión en navegador.
+
+**Solución**:
+1. Verificar que backend está activo
+2. Verificar variable de entorno `API_URL=http://backend:8000`
+3. Reiniciar frontend: `docker-compose restart frontend`
+
+---

@@ -14,7 +14,7 @@ services:
     image: aq_ingestion:latest
     working_dir: /app            
     environment:
-      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consolta
+      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consola
     env_file: .env
     depends_on:
       - db
