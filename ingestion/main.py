@@ -2,7 +2,7 @@ import time
 from config import DATABASE_URL, CITIES_CONFIG
 from database import f_crear_tablas
 # Importamos las funciones de ingesta de cada ciudad
-from ingestion import f_run_ingestion_valencia, f_run_ingestion_madrid
+from ciudades import f_run_ingestion_valencia, f_run_ingestion_madrid
 
 # 1. Mapeo de funciones
 # Este diccionario asocia el nombre de la ciudad en config.py con su función real

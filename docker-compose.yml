@@ -7,17 +7,17 @@ services:
       - "5431:5432"
     restart: unless-stopped
 
-  # app:
-  #   build:
-  #     context: ./app
-  #     dockerfile: Dockerfile
-  #   image: aq_ingestion:latest
-  #   working_dir: /app            
-  #   environment:
-  #     - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consolta
-  #   env_file: .env
-  #   depends_on:
-  #     - db
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    image: aq_ingestion:latest
+    working_dir: /ingestion            
+    environment:
+      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consolta
+    env_file: .env
+    depends_on:
+      - db
 
   # dbt:
   #   image: ghcr.io/dbt-labs/dbt-postgres:1.8.2
@@ -32,7 +32,7 @@ services:
   #   working_dir: /usr/app/air_quality_dbt
   #   env_file: .env
   #   depends_on:
-  #     - app
+  #     - ingestion
 
   # grafana:
   #     image: grafana/grafana-oss:latest
