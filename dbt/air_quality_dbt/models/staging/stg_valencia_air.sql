@@ -43,11 +43,11 @@
 -- FROM raw_data
 
 -- STAGING: Limpieza de datos de Valencia
---
+
 -- ¿Qué hace?
 -- Selecciona y renombra las columnas de la tabla raw.valencia_air
 -- para tener nombres consistentes en inglés
---
+
 -- NOTA IMPORTANTE: La tabla raw.valencia_air tiene columnas estructuradas
 -- (NO es JSONB). El backend FastAPI ya validó y estructuró los datos.
 
