@@ -53,6 +53,8 @@
 
 {{ config(materialized='view') }}
 
+-- https://docs.getdbt.com/docs/build/materializations 
+
 SELECT
     -- Identificadores básicos
     objectid AS station_id,
