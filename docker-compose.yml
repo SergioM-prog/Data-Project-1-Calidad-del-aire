@@ -14,25 +14,53 @@ services:
     image: aq_ingestion:latest
     working_dir: /ingestion            
     environment:
-      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consolta
+      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consola
     env_file: .env
     depends_on:
       - db
 
-  # dbt:
-  #   image: ghcr.io/dbt-labs/dbt-postgres:1.8.2
-  #   # Sobrescribimos el punto de entrada para poder usar comandos de shell (sh). La imagen de dbt viene configurada para ejecutar el comando dbt automáticamente al arrancar
-  #   # Con entry point Docker ignora por completo cualquier configuración interna de la imagen original y lanza directamente la cadena de comandos
-  #   # Incorporamos un bucle para que se generen las transformaciones cada 5 minutos, misma frecuencia con la que la app llama a la api
-  #   entrypoint: /bin/sh -c "sleep 20;while true; do dbt run && dbt docs generate --static; echo 'Transformación completada. Esperando 5 minutos...'; sleep 300; done"
-  #   environment:
-  #     - DBT_PROFILES_DIR=/usr/app/air_quality_dbt
-  #   volumes:
-  #     - ./dbt/air_quality_dbt:/usr/app/air_quality_dbt
-  #   working_dir: /usr/app/air_quality_dbt
-  #   env_file: .env
-  #   depends_on:
-  #     - ingestion
+# 3. TRANSFORMACIONES DBT (Transformaciones de datos - Cada 5 minutos)
+
+      # Usamos la imagen oficial de dbt para Postgres
+      # Versión 1.8.2 de dbt compatible con Postgres
+      #  /bin/sh -c "sleep 20;while true; do dbt run && dbt docs generate --static; echo 'Transformación completada. Esperando 5 minutos...'; sleep 300; done"
+
+      # Desglose paso a paso
+
+            # /bin/sh -c: Ejecuta el comando en una shell sh
+
+            # sleep 20: Espera inicial de 20 segundos antes de comenzar (probablemente para dar tiempo a que otros servicios estén listos)
+
+            # while true; do ... done: Bucle infinito que repite las operaciones indefinidamente
+
+              # Dentro del bucle:
+
+              # dbt run: Ejecuta todas las transformaciones de datos definidas en los modelos dbt
+
+              # &&: Operador lógico AND - solo ejecuta el siguiente comando si el anterior tuvo éxito
+
+              # dbt docs generate --static: Genera documentación estática de los modelos, tests y métricas de dbt
+
+              # echo 'Transformación completada. Esperando 5 minutos...': Mensaje informativo en consola
+
+              # sleep 300: Pausa de 300 segundos (5 minutos) antes de la siguiente iteración
+
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-postgres:1.8.2
+
+    # Sobrescribimos el punto de entrada para poder usar comandos de shell (sh). La imagen de dbt viene configurada para ejecutar el comando dbt automáticamente al arrancar
+    # Con entry point Docker ignora por completo cualquier configuración interna de la imagen original y lanza directamente la cadena de comandos
+    # Incorporamos un bucle para que se generen las transformaciones cada 5 minutos, misma frecuencia con la que la app llama a la api
+
+    entrypoint: /bin/sh -c "sleep 20;while true; do dbt run && dbt docs generate --static; echo 'Transformación completada. Esperando 5 minutos...'; sleep 300; done"
+    environment:
+      - DBT_PROFILES_DIR=/usr/app/air_quality_dbt
+    volumes:
+      - ./dbt/air_quality_dbt:/usr/app/air_quality_dbt
+    working_dir: /usr/app/air_quality_dbt
+    env_file: .env
+    depends_on:
+      - ingestion
 
   # grafana:
   #     image: grafana/grafana-oss:latest
