@@ -63,20 +63,20 @@ services:
       - ingestion
 
   grafana:
-      image: grafana/grafana-oss:latest
-      ports:
-        - "3000:3000"
-      environment:
-        - GF_SECURITY_ADMIN_PASSWORD=admin # Contraseña inicial
-      env_file: .env
-      volumes:
-        - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-        - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-        - ./grafana/dashboards:/var/lib/grafana/dashboards
-        - grafana_data:/var/lib/grafana
-      depends_on:
-        - db
-      restart: unless-stopped
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Contraseña inicial
+    env_file: .env
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - db
+    restart: unless-stopped
 
   # 4. BACKEND API (Servidor que lee datos - Puerto 8000)
   backend:
