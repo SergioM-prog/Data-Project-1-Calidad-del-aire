@@ -51,6 +51,12 @@
 -- NOTA IMPORTANTE: La tabla raw.valencia_air tiene columnas estructuradas
 -- (NO es JSONB). El backend FastAPI ya validó y estructuró los datos.
 
+
+
+
+
+
+
 {{ config(materialized='view') }}
 
 -- https://docs.getdbt.com/docs/build/materializations 
