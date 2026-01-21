@@ -57,7 +57,7 @@
 
 
 
-{{ config(materialized='view') }}
+{{ config(materialized='table') }}
 
 -- https://docs.getdbt.com/docs/build/materializations 
 
