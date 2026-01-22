@@ -7,17 +7,29 @@ services:
       - "5431:5432"
     restart: unless-stopped
 
-  ingestion:
-    build:
-      context: ./ingestion
-      dockerfile: Dockerfile
+  # === INGESTA POR CIUDAD ===
+  # Cada ciudad corre en su propio contenedor, usando la misma imagen
+  # pero con diferente variable CITY. Esto permite arrancar/parar cada
+  # ciudad de forma independiente: docker compose stop ingestion-valencia
+
+  ingestion-valencia:
+    build: ./ingestion
     image: aq_ingestion:latest
-    working_dir: /ingestion            
     environment:
-      - PYTHONUNBUFFERED=1  # Para que los print salgan directamente por consola
+      - PYTHONUNBUFFERED=1
+      - CITY=valencia       # Es una variable de entorno que leerá el orquestador main.py y ejecutará sólo la fun. de ingesta de esa ciudad
     env_file: .env
     depends_on:
-      - db
+      - backend
+
+  # ingestion-madrid:
+  #   image: aq_ingestion:latest
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #     - CITY=madrid
+  #   env_file: .env
+  #   depends_on:
+  #     - backend
 
 # 3. TRANSFORMACIONES DBT (Transformaciones de datos - Cada 5 minutos)
 
@@ -60,7 +72,7 @@ services:
     working_dir: /usr/app/air_quality_dbt
     env_file: .env
     depends_on:
-      - ingestion
+      - db
 
   grafana:
     image: grafana/grafana:latest
