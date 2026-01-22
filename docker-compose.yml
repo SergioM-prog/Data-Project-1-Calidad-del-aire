@@ -85,6 +85,8 @@ services:
     ports:
       - "8000:8000" # Acceso: http://localhost:8000/docs
     env_file: .env
+    volumes:
+      - ./historical:/app/historical:ro  # Datos históricos (solo lectura)
     depends_on:
       - db
     restart: unless-stopped
