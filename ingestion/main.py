@@ -1,44 +1,48 @@
+import os
+import sys
 import time
 from config import CITIES_CONFIG, BARRIER_API_URL
-# Importamos las funciones de ingesta de cada ciudad
 from ciudades import f_run_ingestion_valencia
 # from ciudades import f_run_ingestion_madrid
 
-# 1. Mapeo de funciones
-# Este diccionario asocia el nombre de la ciudad en config.py con su función real
+# Mapeo de funciones: asocia el nombre de la ciudad con su función de ingesta
 INGESTION_MAP = {
     "valencia": f_run_ingestion_valencia,
     # "madrid": f_run_ingestion_madrid,
 }
 
-def orquestador():
-    print("--- INICIANDO ORQUESTADOR DE CALIDAD DEL AIRE ---")
-    
-    # PASO 1: Iterar por las ciudades configuradas
-    for city_name, settings in CITIES_CONFIG.items():
-        if not settings.get("active", False):
-            print(f"Propiedad 'active' en False para {city_name}. Saltando...")
-            continue
-            
-        print(f"\n>> Procesando ciudad: {city_name.upper()}")
-        
-        # Obtenemos la función específica del diccionario
-        func_ingesta = INGESTION_MAP.get(city_name)
-        
-        if func_ingesta:
-            try:
-                # Ejecutamos la ingesta pasándole su URL y la DB
-                func_ingesta(settings["api_url"], BARRIER_API_URL)
-                print(f"✅ Finalizada ingesta de {city_name}.")
-            except Exception as e:
-                # Si una ciudad falla, el bucle sigue con la siguiente
-                print(f"⚠️ Error procesando {city_name}: {e}")
-        else:
-            print(f"❌ No se encontró una función de ingesta para {city_name}.")
 
-    print("\n--- PROCESO DE INGESTA FINALIZADO ---")
+def main():
+    """
+    Ejecuta la ingesta para la ciudad especificada en la variable de entorno CITY.
+    Cada contenedor Docker define su propia variable CITY.
+    """
+    city = os.getenv("CITY")
+
+    if not city:
+        print("ERROR: Variable de entorno CITY no definida")
+        sys.exit(1)
+
+    settings = CITIES_CONFIG.get(city)
+    if not settings:
+        print(f"ERROR: Ciudad '{city}' no existe en CITIES_CONFIG")
+        sys.exit(1)
+
+    func = INGESTION_MAP.get(city)
+    if not func:
+        print(f"ERROR: No hay funcion de ingesta registrada para '{city}'")
+        sys.exit(1)
+
+    print(f"--- INGESTA: {city.upper()} ---")
+    try:
+        func(settings["api_url"], BARRIER_API_URL)
+        print(f"Completado: {city}")
+    except Exception as e:
+        print(f"Error en ingesta de {city}: {e}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    #Delay para asegurar que Postgres ha arrancado en Docker
-    time.sleep(5) 
-    orquestador()
+    # Delay para asegurar que Postgres y Backend han arrancado
+    time.sleep(5)
+    main()
