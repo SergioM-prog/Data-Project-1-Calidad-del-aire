@@ -15,6 +15,7 @@ services:
   ingestion-valencia:
     build: ./ingestion
     image: aq_ingestion:latest
+    pull_policy: build  # Fuerza a construir la imagen localmente en lugar de intentar descargarla
     environment:
       - PYTHONUNBUFFERED=1
       - CITY=valencia       # Es una variable de entorno que leerá el orquestador main.py y ejecutará sólo la fun. de ingesta de esa ciudad
@@ -93,6 +94,7 @@ services:
   # 4. BACKEND API (Servidor que lee datos - Puerto 8000)
   backend:
     build: ./backend
+    pull_policy: build  # Fuerza a construir la imagen localmente en lugar de intentar descargarla
     container_name: air-quality-api
     ports:
       - "8000:8000" # Acceso: http://localhost:8000/docs
