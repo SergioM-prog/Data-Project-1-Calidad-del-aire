@@ -115,12 +115,12 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 
         df = pd.DataFrame(payload)
 
-        # 3. Inserción en la tabla raw.valencia_air
+        # 3. Inserción en la tabla raw.valencia_air_real_hourly
         # Usamos method personalizado para ignorar duplicados automáticamente
         # Especificamos dtype para asegurar que los diccionarios se traten como JSONB
-    
+
         df.to_sql(
-            'valencia_air',
+            'valencia_air_real_hourly',
             engine,
             schema='raw',
             if_exists='append',

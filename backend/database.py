@@ -128,7 +128,7 @@ def init_db():
 
                 # 2. Tabla para Valencia (datos en tiempo real de la API)
                 conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS raw.valencia_air (
+                    CREATE TABLE IF NOT EXISTS raw.valencia_air_real_hourly (
                         id SERIAL PRIMARY KEY,
                         ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         objectid INTEGER,
@@ -153,7 +153,7 @@ def init_db():
                     );
                 """))
 
-                # 3. Tabla para datos históricos de Valencia (cargados desde CSVs)
+                # 3. Tabla para datos históricos reales diarios de Valencia del 01/01/2014 al 31/10/2025 (cargados desde los CSV de la ruta historical/real)
                 conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS raw.valencia_air_historical (
                         id SERIAL PRIMARY KEY,
