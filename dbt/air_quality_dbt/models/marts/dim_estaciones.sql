@@ -1,46 +1,28 @@
--- TABLA: Dimensión de Estaciones (Catálogo de estaciones de medición)
--- 
--- ¿Qué hace esta tabla?
-
--- Crea un registro único por cada estación de medición con información resumida:
--- - Cuántas veces ha medido
--- - Cuándo fue su primera y última medición
--- - En qué ciudad está
---
--- ¿Para qué sirve?
-
--- Para hacer gráficas de:
-
-    -- - Mapa de estaciones activas
-    -- - Listado de estaciones más activas
-    -- - Filtros por ciudad
-
 {{ config(materialized='table') }}
 
-SELECT DISTINCT
+with
 
-    -- Identificadores únicos de la estación
+source as (
 
-    station_id AS id_estacion,
-    station_name AS nombre_estacion,
-    'Valencia' AS ciudad,
-    
-    -- Estadísticas de actividad de la estación
+    select * from {{ ref('stg_valencia_air') }}
+    where fecha_hora_medicion is not null
 
-    MIN(measure_timestamp) AS primera_medicion,
-    MAX(measure_timestamp) AS ultima_medicion,
-    COUNT(*) AS total_mediciones,
-    
-    -- Días de diferencia entre primera y última medición
+),
 
-    DATE_PART('day', MAX(measure_timestamp) - MIN(measure_timestamp)) AS dias_activa
+estaciones_agregadas as (
 
-FROM {{ ref('stg_valencia_air') }}
+    select
+        id_estacion,
+        nombre_estacion,
+        'Valencia' as ciudad,
+        min(fecha_hora_medicion) as primera_medicion,
+        max(fecha_hora_medicion) as ultima_medicion,
+        count(*) as total_mediciones,
+        date_part('day', max(fecha_hora_medicion) - min(fecha_hora_medicion)) as dias_activa
+    from source
+    group by id_estacion, nombre_estacion
 
--- Agrupamos por estación para tener una fila por estación
+)
 
-GROUP BY station_id, station_name
-
--- Ordenamos por las estaciones más activas primero
-
-ORDER BY total_mediciones DESC
+select * from estaciones_agregadas
+order by total_mediciones desc

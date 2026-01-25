@@ -1,78 +1,48 @@
--- TABLA: Calidad del Aire - Resumen Semanal
--- 
--- ¿Qué hace esta tabla?
--- Agrupa TODAS las mediciones por SEMANAS (lunes a domingo)
--- y calcula promedios, máximos y mínimos de cada contaminante
---
--- ¿Para qué sirve?
--- Para gráficas de:
--- - Evolución de contaminación por semanas (tendencias largas)
--- - Comparar esta semana vs semana pasada
--- - Ver patrones estacionales (verano vs invierno)
---
--- Diferencia con fct_air_quality_daily:
--- Esta es SEMANAL (7 días agrupados), la otra es DIARIA (1 día)
-
 {{ config(materialized='table') }}
 
-SELECT
-    -- Fecha de inicio de la semana (siempre lunes)
-    DATE_TRUNC('week', measure_timestamp) AS inicio_semana,
-    
-    -- Fecha de fin de la semana (domingo)
-    DATE_TRUNC('week', measure_timestamp) + INTERVAL '6 days' AS fin_semana,
-    
-    -- Número de semana del año (1-52)
-    EXTRACT(WEEK FROM measure_timestamp) AS numero_semana,
-    
-    -- Año
-    EXTRACT(YEAR FROM measure_timestamp) AS año,
-    
-    -- Identificadores de estación
-    station_id AS id_estacion,
-    station_name AS nombre_estacion,
-    
-    -- PROMEDIOS semanales de cada contaminante
-    ROUND(AVG(no2)::numeric, 2) AS promedio_semanal_no2,
-    ROUND(AVG(pm10)::numeric, 2) AS promedio_semanal_pm10,
-    ROUND(AVG(pm25)::numeric, 2) AS promedio_semanal_pm25,
-    ROUND(AVG(so2)::numeric, 2) AS promedio_semanal_so2,
-    ROUND(AVG(o3)::numeric, 2) AS promedio_semanal_ozono,
-    ROUND(AVG(co)::numeric, 2) AS promedio_semanal_co,
-    
-    -- MÁXIMOS de la semana (picos de contaminación)
-    ROUND(MAX(pm25)::numeric, 2) AS maximo_pm25_semana,
-    ROUND(MAX(pm10)::numeric, 2) AS maximo_pm10_semana,
-    ROUND(MAX(no2)::numeric, 2) AS maximo_no2_semana,
-    
-    -- MÍNIMOS de la semana (días más limpios)
-    ROUND(MIN(pm25)::numeric, 2) AS minimo_pm25_semana,
-    ROUND(MIN(pm10)::numeric, 2) AS minimo_pm10_semana,
-    ROUND(MIN(no2)::numeric, 2) AS minimo_no2_semana,
-    
-    -- Conteo de mediciones en esa semana (debería ser ~168 por estación si hay datos cada hora)
-    COUNT(*) AS total_mediciones_semana,
-    
-    -- Días con datos completos en la semana
-    COUNT(DISTINCT DATE(measure_timestamp)) AS dias_con_datos,
-    
-    -- Calidad promedio de la semana según PM2.5
-    CASE 
-        WHEN AVG(pm25) <= 10 THEN 'Semana Buena'
-        WHEN AVG(pm25) <= 15 THEN 'Semana Moderada'
-        WHEN AVG(pm25) <= 25 THEN 'Semana Pobre'
-        ELSE 'Semana Muy Contaminada'
-    END AS clasificacion_semana
+with
 
-FROM {{ ref('stg_valencia_air') }}
+source as (
 
--- Agrupamos por semana y por estación
-GROUP BY 
-    DATE_TRUNC('week', measure_timestamp), 
-    EXTRACT(WEEK FROM measure_timestamp),
-    EXTRACT(YEAR FROM measure_timestamp),
-    station_id, 
-    station_name
+    select * from {{ ref('stg_valencia_air') }}
 
--- Ordenamos de la semana más reciente a la más antigua
-ORDER BY inicio_semana DESC, nombre_estacion
+),
+
+weekly_aggregates as (
+
+    select
+        date_trunc('week', fecha_hora_medicion) as inicio_semana,
+        date_trunc('week', fecha_hora_medicion) + interval '6 days' as fin_semana,
+        extract(week from fecha_hora_medicion) as numero_semana,
+        extract(year from fecha_hora_medicion) as anio,
+        id_estacion,
+        nombre_estacion,
+        round(avg(no2)::numeric, 2)::float as promedio_semanal_no2,
+        round(avg(pm10)::numeric, 2)::float as promedio_semanal_pm10,
+        round(avg(pm25)::numeric, 2)::float as promedio_semanal_pm25,
+        round(avg(so2)::numeric, 2)::float as promedio_semanal_so2,
+        round(avg(o3)::numeric, 2)::float as promedio_semanal_ozono,
+        round(avg(co)::numeric, 2)::float as promedio_semanal_co,
+        round(max(pm25)::numeric, 2)::float as maximo_pm25_semana,
+        round(max(pm10)::numeric, 2)::float as maximo_pm10_semana,
+        round(max(no2)::numeric, 2)::float as maximo_no2_semana,
+        round(min(pm25)::numeric, 2)::float as minimo_pm25_semana,
+        round(min(pm10)::numeric, 2)::float as minimo_pm10_semana,
+        round(min(no2)::numeric, 2)::float as minimo_no2_semana,
+        count(*) as total_mediciones_semana,
+        count(distinct date(fecha_hora_medicion)) as dias_con_datos,
+        case
+            when avg(pm25) is null then 'Sin Datos'
+            when avg(pm25) <= 10 then 'Semana Buena'
+            when avg(pm25) <= 15 then 'Semana Moderada'
+            when avg(pm25) <= 25 then 'Semana Pobre'
+            else 'Semana Muy Contaminada'
+        end as clasificacion_semana,
+        'Valencia' as ciudad
+    from source
+    group by 1, 2, 3, 4, 5, 6
+
+)
+
+select * from weekly_aggregates
+order by inicio_semana desc, nombre_estacion

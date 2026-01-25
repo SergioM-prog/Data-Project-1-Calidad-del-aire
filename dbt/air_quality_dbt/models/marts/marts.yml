@@ -1,36 +1,365 @@
+# version: 2
+
+# models:
+#   - name: fct_air_quality_daily
+#     description: "Tabla de hechos con promedios diarios de calidad del aire por ciudad y estación."
+#     columns:
+#       - name: fecha_medicion
+#         description: "Fecha de la medición (granularidad diaria)."
+#         data_tests:
+#           - not_null
+#       - name: ciudad
+#         description: "Nombre de la ciudad (Valencia o Madrid)."
+#         data_tests:
+#           - not_null
+#           - accepted_values:
+#               values: ['Valencia', 'Madrid']
+#       - name: promedio_diario_no2
+#         description: "Promedio diario de NO2 calculado a partir de las muestras horarias."
+
+#   - name: fct_air_quality_hourly
+#     description: "Tabla de hechos con promedios horarios. Es la fuente principal para el dashboard de tiempo real."
+#     columns:
+#       - name: fecha_hora
+#         description: "Timestamp truncado a la hora exacta."
+#         data_tests:
+#           - not_null
+#       - name: nombre_estacion
+#         description: "Nombre legible de la estación de medición."
+#         data_tests:
+#           - not_null
+#       - name: promedio_no2
+#         description: "Promedio de NO2 en la hora indicada."
+
+
+        
+        
 version: 2
 
 models:
+  # ==========================================================================
+  # FACT TABLE: Agregación Diaria de Calidad del Aire
+  # ==========================================================================
   - name: fct_air_quality_daily
-    description: "Tabla de hechos con promedios diarios de calidad del aire por ciudad y estación."
+    description: |
+      Tabla de hechos con promedios DIARIOS de calidad del aire por ciudad y estación.
+      
+      Granularidad: 1 fila por día + ciudad + estación
+      Actualización: Cada ejecución de dbt (recomendado: 1x/día a las 00:00)
+      Uso principal: Análisis de tendencias históricas, comparaciones mensuales/anuales
+      
+      Métricas clave:
+      - Promedios diarios de NO2, PM10, PM2.5
+      - Picos máximos del día (para alertas)
+      - Clasificación de calidad según OMS 2021
+    
+    # ========================================================================
+    # CAMBIO 1: Agregados tests de relaciones (Data Integrity)
+    # ========================================================================
+    # ANTES: No validábamos que station_id exista en dim_estaciones
+    # DESPUÉS: Test de relación garantiza integridad referencial
+    # 
+    # ¿Por qué?
+    # - Evita "estaciones fantasma" (mediciones de estaciones no catalogadas)
+    # - Si falla → problema en pipeline de ingesta o dim_estaciones desactualizada
+    # ========================================================================
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - fecha_medicion
+            - id_estacion
+            - ciudad
+          config:
+            severity: error
+            error_if: ">0"
+    
     columns:
-      - name: measure_date
-        description: "Fecha de la medición (granularidad diaria)."
-        data_tests:
+      # ======================================================================
+      # DIMENSIÓN TEMPORAL
+      # ======================================================================
+      - name: fecha_medicion
+        description: "Fecha de la medición (granularidad diaria, sin hora)"
+        tests:
           - not_null
-      - name: city
-        description: "Nombre de la ciudad (Valencia o Madrid)."
-        data_tests:
+          - unique:
+              config:
+                where: "id_estacion IS NOT NULL AND ciudad IS NOT NULL"
+      
+      # ======================================================================
+      # DIMENSIÓN GEOGRÁFICA
+      # ======================================================================
+      - name: ciudad
+        description: "Nombre de la ciudad (Valencia o Madrid)"
+        tests:
           - not_null
           - accepted_values:
               values: ['Valencia', 'Madrid']
-      - name: daily_avg_no2
-        description: "Promedio diario de NO2 calculado a partir de las muestras horarias."
-        data_tests:
+              config:
+                severity: warn  # Warning (no error) porque Madrid puede venir vacío
+      
+      - name: id_estacion
+        description: "ID único de la estación de medición"
+        tests:
           - not_null
+          # ==================================================================
+          # NUEVO: Test de relación con dim_estaciones
+          # ==================================================================
+          # ANTES: No validábamos que la estación exista en catálogo
+          # DESPUÉS: Garantizamos integridad referencial
+          # 
+          # ¿Qué valida?
+          # - Que cada id_estacion en fct_air_quality_daily
+          # - Exista también en dim_estaciones.id_estacion
+          # - Si falla → hay mediciones de estación no catalogada
+          # ==================================================================
+          - relationships:
+              to: ref('dim_estaciones')
+              field: id_estacion
+              config:
+                severity: error
+      
+      - name: nombre_estacion
+        description: "Nombre legible de la estación"
+        tests:
+          - not_null
+      
+      # ======================================================================
+      # MÉTRICAS: Promedios Diarios
+      # ======================================================================
+      - name: promedio_diario_no2
+        description: |
+          Promedio diario de NO₂ (Dióxido de Nitrógeno) en µg/m³.
+          Calculado a partir de mediciones horarias.
+          Límite OMS 2021: 25 µg/m³ (promedio 24h)
+        tests:
+          # ==================================================================
+          # CAMBIO 2: Test condicional (solo si hay datos de NO2)
+          # ==================================================================
+          # ANTES:
+          # - not_null  ❌ Falla si estación no mide NO2
+          # 
+          # DESPUÉS:
+          # (sin test not_null)
+          # 
+          # ¿Por qué?
+          # - No todas las estaciones miden todos los contaminantes
+          # - NULL es válido si la estación no tiene sensor de NO2
+          # - Invalidar toda la tabla por esto sería erróneo
+          # 
+          # Alternativa (más estricta):
+          # - not_null:
+          #     where: "id_estacion IN (SELECT id_estacion FROM dim_estaciones WHERE mide_no2 = true)"
+          # ==================================================================
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 500  # Valores extremos (incendios, industria)
+              config:
+                severity: warn
+      
+      - name: promedio_diario_pm10
+        description: |
+          Promedio diario de PM10 (Partículas < 10µm) en µg/m³.
+          Límite OMS 2021: 45 µg/m³ (promedio 24h)
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 600
+              config:
+                severity: warn
+      
+      - name: promedio_diario_pm25
+        description: |
+          Promedio diario de PM2.5 (Partículas < 2.5µm) en µg/m³.
+          Límite OMS 2021: 15 µg/m³ (promedio 24h)
+          Contaminante más peligroso para salud humana.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 500
+              config:
+                severity: warn
+      
+      # ======================================================================
+      # MÉTRICAS: Picos Máximos
+      # ======================================================================
+      - name: pico_no2
+        description: "Valor máximo de NO₂ registrado durante el día (µg/m³)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000
+              config:
+                severity: warn
+      
+      - name: pico_pm10
+        description: "Valor máximo de PM10 registrado durante el día (µg/m³)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000
+              config:
+                severity: warn
+      
+      # ======================================================================
+      # MÉTRICA DE CALIDAD
+      # ======================================================================
+      - name: total_mediciones_dia
+        description: |
+          Número de mediciones usadas para calcular los promedios.
+          Esperado: ~24 (1 medición por hora).
+          Si < 20 → datos incompletos, promedios menos confiables.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 50  # Permite variabilidad (APIs con diferentes frecuencias)
+              config:
+                severity: warn
+      
+      - name: clasificacion_calidad_dia
+        description: |
+          Clasificación textual de la calidad del aire según promedio de PM2.5.
+          Valores: Excelente, Buena, Moderada, Pobre, Muy Pobre, Peligrosa, Sin Datos
+        tests:
+          - accepted_values:
+              values: 
+                - 'Excelente'
+                - 'Buena'
+                - 'Moderada'
+                - 'Pobre'
+                - 'Muy Pobre'
+                - 'Peligrosa'
+                - 'Sin Datos'
 
+  # ==========================================================================
+  # FACT TABLE: Agregación Horaria de Calidad del Aire
+  # ==========================================================================
   - name: fct_air_quality_hourly
-    description: "Tabla de hechos con promedios horarios. Es la fuente principal para el dashboard de tiempo real."
+    description: |
+      Tabla de hechos con promedios HORARIOS de calidad del aire.
+      
+      Granularidad: 1 fila por hora + ciudad + estación
+      Actualización: Cada 5-15 minutos (materialización incremental)
+      Uso principal: Dashboard de tiempo real, análisis intradía
+      
+      IMPORTANTE: Usa materialización INCREMENTAL para optimizar costos.
+      Solo procesa datos nuevos en cada ejecución.
+    
+    # ========================================================================
+    # Tests a nivel de tabla
+    # ========================================================================
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - fecha_hora
+            - id_estacion
+            - ciudad
+          config:
+            severity: error
+    
     columns:
-      - name: measure_hour
-        description: "Timestamp truncado a la hora exacta."
-        data_tests:
+      - name: id_unico_hora
+        description: |
+          Clave única compuesta: fecha_hora + ciudad + id_estacion.
+          Usada por materialización incremental para evitar duplicados en MERGE.
+        tests:
           - not_null
-      - name: station_name
-        description: "Nombre legible de la estación de medición."
-        data_tests:
+          - unique
+      
+      - name: fecha_hora
+        description: "Timestamp truncado a la hora exacta (ej: 2026-01-20 14:00:00)"
+        tests:
           - not_null
-      - name: avg_no2
-        description: "Promedio de NO2 en la hora indicada."
-        data_tests:
+      
+      - name: ciudad
+        description: "Nombre de la ciudad"
+        tests:
           - not_null
+          - accepted_values:
+              values: ['Valencia', 'Madrid']
+      
+      - name: id_estacion
+        description: "ID único de la estación"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_estaciones')
+              field: id_estacion
+      
+      - name: nombre_estacion
+        description: "Nombre legible de la estación"
+        tests:
+          - not_null
+      
+      # ======================================================================
+      # MÉTRICAS HORARIAS
+      # ======================================================================
+      - name: promedio_no2
+        description: "Promedio horario de NO₂ en µg/m³"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 500
+              config:
+                severity: warn
+      
+      - name: promedio_pm10
+        description: "Promedio horario de PM10 en µg/m³"
+      
+      - name: promedio_pm25
+        description: "Promedio horario de PM2.5 en µg/m³"
+      
+      - name: promedio_so2
+        description: "Promedio horario de SO₂ en µg/m³"
+      
+      - name: promedio_ozono
+        description: "Promedio horario de O₃ (ozono troposférico) en µg/m³"
+      
+      - name: promedio_co
+        description: "Promedio horario de CO (monóxido de carbono) en µg/m³"
+      
+      - name: total_mediciones_hora
+        description: |
+          Número de mediciones usadas para calcular promedios horarios.
+          Útil para detectar horas sin datos.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 20
+      
+      - name: clasificacion_calidad_hora
+        description: "Clasificación de calidad según PM2.5 (OMS 2021)"
+        tests:
+          - accepted_values:
+              values: 
+                - 'Excelente'
+                - 'Buena'
+                - 'Moderada'
+                - 'Pobre'
+                - 'Muy Pobre'
+                - 'Peligrosa'
+                - 'Sin Datos'
+
+# ============================================================================
+# RESUMEN DE CAMBIOS EN MARTS.YML:
+# ============================================================================
+# 1. ✅ Agregados tests de relaciones (relationships) con dim_estaciones
+# 2. ✅ Agregados tests de unicidad compuesta (unique_combination_of_columns)
+# 3. ✅ Eliminados tests not_null problemáticos en métricas opcionales
+# 4. ✅ Agregados tests de rangos aceptados (accepted_range) para detectar outliers
+# 5. ✅ Agregados tests de valores aceptados (accepted_values) para clasificaciones
+# 6. ✅ Mejoradas descripciones con límites OMS y contexto de negocio
+# 7. ✅ Configuración de severidad (error vs warn) según criticidad
+# 8. ✅ Documentación de materialización incremental en fct_air_quality_hourly
+# 9. ✅ Tests específicos para id_unico_hora (clave de MERGE incremental)
+# 
+# TESTS QUE SE EJECUTAN AHORA:
+# - Integridad referencial: ¿Todas las estaciones existen en catálogo?
+# - Unicidad: ¿Hay duplicados en (fecha, estación, ciudad)?
+# - Rangos: ¿Hay valores negativos o extremos sospechosos?
+# - Valores aceptados: ¿Las clasificaciones son válidas?
+# 
+# COMANDO PARA EJECUTAR:
+# dbt test --select fct_air_quality_daily fct_air_quality_hourly
+# ============================================================================

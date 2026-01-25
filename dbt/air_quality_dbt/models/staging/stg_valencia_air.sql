@@ -46,13 +46,10 @@
 
 -- ¿Qué hace?
 -- Selecciona y renombra las columnas de la tabla raw.valencia_air
--- para tener nombres consistentes en inglés
+-- para tener nombres consistentes en español
 
 -- NOTA IMPORTANTE: La tabla raw.valencia_air tiene columnas estructuradas
 -- (NO es JSONB). El backend FastAPI ya validó y estructuró los datos.
-
-
-
 
 
 
@@ -63,8 +60,8 @@
 
 SELECT
     -- Identificadores básicos
-    objectid AS station_id,
-    nombre AS station_name,
+    objectid AS id_estacion,
+    nombre AS nombre_estacion,
 
     -- Contaminantes (ya vienen como NUMERIC de la tabla raw, los convertimos a FLOAT)
     no2::FLOAT AS no2,
@@ -75,23 +72,23 @@ SELECT
     pm25::FLOAT AS pm25,
 
     -- Metadatos y calidad del aire
-    calidad_am AS air_quality_status,
+    calidad_am AS estado_calidad_aire,
 
     -- Ubicación geográfica
-    direccion AS address,
-    tipozona AS zone_type,
-    tipoemisio AS emission_type,
+    direccion,
+    tipozona AS tipo_zona,
+    tipoemisio AS tipo_emision,
 
     -- Coordenadas geográficas (extraer del JSONB geo_point_2d)
     (geo_point_2d->>'lat')::FLOAT AS latitud,
     (geo_point_2d->>'lon')::FLOAT AS longitud,
 
     -- Timestamps (marcas de tiempo)
-    fecha_carg AS measure_timestamp,
-    ingested_at,
+    fecha_carg AS fecha_hora_medicion,
+    ingested_at AS fecha_ingesta,
 
     -- ID interno de la fila en la tabla raw
-    id AS raw_id,
+    id AS id_fila_raw,
 
     -- Otros campos útiles
     parametros AS parametros_medidos,
@@ -102,6 +99,3 @@ FROM {{ source('air_quality', 'valencia_air') }}
 
 -- Filtrar solo registros con timestamp válido
 WHERE fecha_carg IS NOT NULL
-
-
--- -- Cambios hechos por Fran: busca el markdown original arriba
