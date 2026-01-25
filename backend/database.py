@@ -7,6 +7,7 @@ from pathlib import Path
 
 # Diccionario con los metadatos de cada estación (basado en la API de Valencia)
 # La clave es el objectid (nombre del archivo CSV)
+
 STATIONS_METADATA = {
     12: {
         "nombre": "Dr. Lluch",
@@ -147,7 +148,8 @@ def init_db():
                         calidad_am VARCHAR(100),
                         fiwareid VARCHAR(255),
                         geo_shape JSONB,
-                        geo_point_2d JSONB
+                        geo_point_2d JSONB,
+                        UNIQUE(objectid, fecha_carg)
                     );
                 """))
 
