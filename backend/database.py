@@ -155,7 +155,30 @@ def init_db():
 
                 # 3. Tabla para datos históricos reales diarios de Valencia del 01/01/2014 al 31/10/2025 (cargados desde los CSV de la ruta historical/real)
                 conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS raw.valencia_air_historical (
+                    CREATE TABLE IF NOT EXISTS raw.valencia_air_historical_real_daily (
+                        id SERIAL PRIMARY KEY,
+                        ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                        objectid INTEGER,
+                        nombre VARCHAR(255),
+                        direccion TEXT,
+                        tipozona VARCHAR(100),
+                        tipoemisio VARCHAR(100),
+                        fiwareid VARCHAR(255),
+                        fecha_medicion DATE,
+                        so2 NUMERIC,
+                        no2 NUMERIC,
+                        o3 NUMERIC,
+                        co NUMERIC,
+                        pm10 NUMERIC,
+                        pm25 NUMERIC,
+                        geo_shape JSONB,
+                        geo_point_2d JSONB
+                    );
+                """))
+
+                # 3. Tabla para datos históricos simulados horarios de Valencia del 01/01/2025 al 31/01/2026 (cargados desde los CSV de la ruta historical/simulated)
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS raw.valencia_air_historical_simulated_hourly(
                         id SERIAL PRIMARY KEY,
                         ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         objectid INTEGER,
