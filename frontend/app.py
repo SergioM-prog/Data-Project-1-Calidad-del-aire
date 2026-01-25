@@ -1,91 +1,218 @@
-import dash
+import os #para leer las variables de entorno
+import requests #para llamar a la API (los GETs)
+import pandas as pd # para transformar el JSON en tabla y hacer cálculos
+
+import dash #el freamework web (servidor+callbacks)
 from dash import dcc, html, Input, Output
-import plotly.express as px
-import pandas as pd
-import requests
-import os
+import plotly.express as px  # (no lo usamos aún, pero viene bien tenerlo para el heatmap)
 
-# CONFIGURACIÓN
-# Buscamos la variable de entorno API_URL. 
-# Si no existe (ej. probando en local sin docker), intentamos localhost:8000
-API_URL = os.getenv("API_URL", "http://backend:8000")
+API_URL = os.getenv("API_URL", "http://backend:8000") #lee la variable API_URL
 
-# Inicializar Dash
-app = dash.Dash(_name_, title="Air Quality Citizen App")
+app = dash.Dash(__name__, title="🌤️ App Ciudadana | Calidad del aire") #Creamos la app "Dash" y título del navegador
 
-# LAYOUT (Lo que ve el usuario)
-app.layout = html.Div(style={'fontFamily': 'Arial, sans-serif', 'maxWidth': '1000px', 'margin': '0 auto', 'padding': '20px'}, children=[
-    
-    # 1. Encabezado
-    html.H1("🌤️ Monitor Ciudadano de Calidad del Aire", style={'textAlign': 'center', 'color': '#2c3e50'}),
-    html.P("Datos en tiempo real validados por la red municipal.", style={'textAlign': 'center', 'color': '#7f8c8d'}),
 
-    # 2. Espacio reservado para ALERTAS (Se llena dinámicamente)
-    html.Div(id='alert-banner', style={'margin': '20px 0'}),
+# ---------- Helpers ----------
 
-    # 3. Gráfico Principal
-    html.Div([
-        dcc.Graph(id='live-graph'),
-    ], style={'boxShadow': '0 4px 8px 0 rgba(0,0,0,0.2)', 'borderRadius': '5px', 'padding': '10px'}),
-
-    # 4. Componente invisible que actualiza la página cada 60 segundos
-    dcc.Interval(
-        id='interval-component',
-        interval=60*1000, # 1 minuto en milisegundos
-        n_intervals=0
+def card(title: str, value: str, subtitle: str = ""):
+    return html.Div(
+        style={
+            "flex": "1",
+            "padding": "12px",
+            "borderRadius": "10px",
+            "border": "1px solid #e5e7eb",
+            "backgroundColor": "white",
+            "boxShadow": "0 2px 6px rgba(0,0,0,0.06)",
+        },
+        children=[
+            html.Div(title, style={"fontWeight": "700", "marginBottom": "6px"}),
+            html.Div(value, style={"fontSize": "18px", "fontWeight": "700"}),
+            html.Div(subtitle, style={"marginTop": "6px", "opacity": "0.8", "fontSize": "13px"}) if subtitle else None,
+        ],
     )
-])
 
-# CALLBACK (La lógica que se ejecuta cada minuto)
-@app.callback(
-    [Output('live-graph', 'figure'),
-     Output('alert-banner', 'children')],
-    [Input('interval-component', 'n_intervals')]
+
+WHY_MAP = {
+    "NO2": "Suele estar relacionado con el tráfico y puede irritar las vías respiratorias.",
+    "PM25": "Partículas muy finas que pueden afectar a la respiración, sobre todo en personas sensibles.",
+    "PM2.5": "Partículas muy finas que pueden afectar a la respiración, sobre todo en personas sensibles.",
+    "PM10": "Partículas en el aire que pueden empeorar alergias o molestias respiratorias.",
+    "O3": "Ozono: puede aumentar con sol/calor y provocar tos o irritación.",
+    "SO2": "Puede causar molestias respiratorias, sobre todo en personas sensibles.",
+    "CO": "Relacionado con combustión; en niveles altos puede ser peligroso.",
+}
+
+
+def severity_style(nivel: int):
+    if nivel is None or nivel == 0:
+        return ("#95a5a6", "⚪ Sin datos")
+    
+    if nivel == 1:
+        return ("#f1c40f", "🟡 Precaución")
+
+    if nivel == 2:
+        return ("#e67e22", "🟠 Moderado")
+
+    if nivel == 3:
+        return ("#e74c3c", "🔴 Aire malo")
+
+    if nivel == 4:
+        return ("#8e44ad", "🟣 Muy malo")
+
+    return ("#7f8c8d", "⚪ Sin datos")
+
+
+
+def fetch_hourly(limit=5000) -> pd.DataFrame:
+    r = requests.get(f"{API_URL}/api/v1/hourly-metrics", params={"limit": limit}, timeout=20)
+    r.raise_for_status()
+    return pd.DataFrame(r.json())
+
+
+def fetch_history(station_id: int, days: int, metric: str) -> pd.DataFrame:
+    r = requests.get(
+        f"{API_URL}/api/v1/history/hourly",
+        params={"station_id": station_id, "days": days, "metric": metric},
+        timeout=20
+    )
+    r.raise_for_status()
+    return pd.DataFrame(r.json())
+
+
+# ---------- Layout ---------- estructura de la página
+
+app.layout = html.Div(
+    style={"fontFamily": "Arial", "maxWidth": "900px", "margin": "0 auto", "padding": "20px"},
+    children=[
+        html.H2("🌤️ Selecciona tu estación"),
+
+        dcc.Dropdown( #crea el desplegable
+            id="dd-station", #para referenciar en callbacks
+            placeholder="Cargando estaciones...",
+            clearable=False #evita que usuario lo deje vacío
+        ),
+
+        html.Div(id="alert-banner", style={"marginTop": "12px"}),
+
+        html.Div(
+            id="cards",
+            style={"display": "flex", "gap": "12px", "marginTop": "12px"}
+        ),
+
+        html.Div(id="status", style={"marginTop": "12px", "opacity": "0.8"}),
+
+        # dispara el callback de carga de estaciones 1 vez al cargar
+        dcc.Store(id="init", data=True),
+    ],
 )
-def update_dashboard(n):
+
+
+# ---------- Callbacks ----------
+
+@app.callback(
+    Output("dd-station", "options"),
+    Output("dd-station", "value"),
+    Output("status", "children"),
+    Input("init", "data"),
+)
+def load_stations(_):
     try:
-        # A) PEDIR DATOS A LA API (Backend)
-        # Endpoint que definimos en backend/main.py
-        response = requests.get(f"{API_URL}/api/v1/hourly-metrics")
-        
-        if response.status_code != 200:
-            return px.line(title="Error en API"), html.Div("API no disponible", style={'color': 'red'})
+        response = requests.get(
+            f"{API_URL}/api/v1/hourly-metrics",
+            params={"limit": 5000},
+            timeout=15
+        )
+        response.raise_for_status()
 
-        data = response.json()
-        df = pd.read_json(pd.io.json.json_normalize(data).to_json(orient='records'))
+        df = pd.DataFrame(response.json())
 
-        if df.empty:
-            return px.line(title="Esperando datos..."), None
+        if "station_id" not in df.columns or "station_name" not in df.columns:
+            return [], None, "❌ La API no devuelve station_id / station_name"
 
-        # B) LÓGICA DE ALERTA
-        # Miramos el último dato registrado
-        latest_record = df.iloc[0]
-        latest_val = latest_record['avg_no2']
-        
-        alert_element = None
-        
-        # Umbral de ejemplo: 40 ug/m3
-        if latest_val > 40:
-            alert_element = html.Div([
-                html.H3(f"⚠️ ALERTA: Nivel de NO2 Alto ({latest_val} µg/m³)", style={'margin': '0'}),
-                html.P("Se recomienda limitar el ejercicio al aire libre.")
-            ], style={'backgroundColor': '#e74c3c', 'color': 'white', 'padding': '15px', 'borderRadius': '5px', 'textAlign': 'center'})
-        else:
-             alert_element = html.Div([
-                html.H3(f"✅ Calidad del Aire Buena ({latest_val} µg/m³)", style={'margin': '0'}),
-            ], style={'backgroundColor': '#27ae60', 'color': 'white', 'padding': '15px', 'borderRadius': '5px', 'textAlign': 'center'})
+        stations = (
+            df[["station_id", "station_name"]]
+            .dropna()
+            .drop_duplicates()
+            .sort_values("station_name")
+        )
 
-        # C) GENERAR GRÁFICO
-        fig = px.line(df, x='measure_hour', y='avg_no2', color='station_name', 
-                      title='Evolución Horaria de NO2 por Estación',
-                      labels={'measure_hour': 'Hora', 'avg_no2': 'NO2 (µg/m³)'})
-        
-        return fig, alert_element
+        options = [
+            {"label": row["station_name"], "value": int(row["station_id"])}
+            for _, row in stations.iterrows()
+        ]
+
+        default_value = options[0]["value"] if options else None
+
+        return options, default_value, None 
 
     except Exception as e:
-        print(f"Error en frontend: {e}")
-        return px.line(title="Error de conexión"), None
+        return [], None, f"❌ Error cargando estaciones: {e}"
 
-if _name_ == '_main_':
-    # host 0.0.0.0 es necesario para Docker
-    app.run_server(host='0.0.0.0', port=8050, debug=False)
+
+
+@app.callback(
+    Output("alert-banner", "children"),
+    Input("dd-station", "value"),
+)
+def render_banner(station_id):
+    if station_id is None:
+        return html.Div("Selecciona una estación.", style={"opacity": "0.7"})
+
+    try:
+        r = requests.get(
+            f"{API_URL}/api/v1/alerts/now",
+            params={"station_id": int(station_id)},
+            timeout=15
+        )
+
+        
+        if r.status_code == 404:
+            return html.Div(
+                style={
+                    "backgroundColor": "#2ecc71",
+                    "color": "black",
+                    "padding": "14px",
+                    "borderRadius": "8px",
+                },
+                children=[
+                    html.H3("✅ Sin alertas activas", style={"margin": "0 0 6px 0"}),
+                    html.Div(
+                        "No se detectan niveles nocivos en este momento en esta estación.",
+                        style={"opacity": "0.95"},
+                    ),
+                ],
+            )
+
+       
+        r.raise_for_status()
+        data = r.json()
+
+        nivel = int(data.get("nivel_severidad", 0))
+        color, title = severity_style(nivel)
+
+        station_name = data.get("nombre_estacion", f"Estación {station_id}")
+        contaminante = data.get("contaminante_principal", "—")
+        reco = data.get("recomendacion", "")
+        ts = data.get("fecha_hora_alerta", "")
+
+        why = WHY_MAP.get(contaminante, "Puede afectar a la salud respiratoria.")
+
+        return html.Div(
+            style={"backgroundColor": color, "color": "black", "padding": "14px", "borderRadius": "8px"},
+            children=[
+                html.H3(f"{title} · {station_name}", style={"margin": "0 0 6px 0"}),
+                html.Div(f"Recomendación: {reco}", style={"marginTop": "8px", "fontWeight": "700"}),
+                html.Div(f"Principal contaminante: {contaminante}", style={"marginTop": "10px"}),
+                html.Div(why, style={"marginTop": "4px", "opacity": "0.95"}),
+                html.Div(f"Última actualización: {ts}", style={"marginTop": "10px", "fontSize": "12px", "opacity": "0.85"}),
+            ],
+        )
+
+    except HTTPError as e:
+        # errores 4xx/5xx (distintos de 404)
+        return html.Div(f"❌ Error cargando alerta: {e}", style={"color": "red"})
+
+    except Exception as e:
+        return html.Div(f"❌ Error inesperado: {e}", style={"color": "red"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8050, debug=False)
