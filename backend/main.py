@@ -9,6 +9,9 @@ from database import init_db
 import math
 from fastapi import Query 
 from sqlalchemy import text
+#para probar mapa
+from fastapi import APIRouter, HTTPException
+from stations_coords import STATION_COORDS
 
 @asynccontextmanager    # El decorador es un envoltorio funcional. Le dice a python que la función es un Gestor de Contexto (Context Manager) y tiene dos tiempos, una al arrancar (Antes del yield) y otra al apagar la api (Despues del yield)
 async def lifespan(app: FastAPI):
@@ -236,5 +239,25 @@ def get_station_latest_hourly(station_id: int = Query(..., ge=1)):
         print(f"Error latest-hourly: {e}")
         raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
 
+#PARA PROBAR MAPA 
+
+@app.get("/air_quality/history")
+def air_quality_history(station_id: int, window: str = "now"):
+    rows = []
+
+    # --- tu lógica actual de histórico ---
+    rows.append({
+        "timestamp": "2026-01-26T10:00:00",
+        "nivel_severidad": 3,
+    })
+
+    
+    coords = STATION_COORDS.get(station_id)
+    if coords:
+        for r in rows:
+            r["lat"] = coords["lat"]
+            r["lon"] = coords["lon"]
+
+    return rows
 
     
