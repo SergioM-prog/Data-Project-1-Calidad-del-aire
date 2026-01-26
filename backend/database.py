@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import text, types
 from config import engine # Importamos el engine centralizado
 import time
 import pandas as pd
@@ -164,7 +164,7 @@ def init_db():
                         tipozona VARCHAR(100),
                         tipoemisio VARCHAR(100),
                         fiwareid VARCHAR(255),
-                        fecha_medicion DATE,
+                        fecha_medicion TIMESTAMPTZ,
                         so2 NUMERIC,
                         no2 NUMERIC,
                         o3 NUMERIC,
@@ -176,26 +176,30 @@ def init_db():
                     );
                 """))
 
-                # 3. Tabla para datos históricos simulados horarios de Valencia del 01/01/2025 al 31/01/2026 (cargados desde los CSV de la ruta historical/simulated)
+                # 4. Tabla para datos históricos simulados horarios de Valencia del 01/01/2025 al 31/01/2026 (cargados desde los CSV de la ruta historical/simulated)
                 conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS raw.valencia_air_historical_simulated_hourly(
+                    CREATE TABLE IF NOT EXISTS raw.valencia_air_historical_simulated_hourly (
                         id SERIAL PRIMARY KEY,
                         ingested_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         objectid INTEGER,
                         nombre VARCHAR(255),
                         direccion TEXT,
                         tipozona VARCHAR(100),
-                        tipoemisio VARCHAR(100),
-                        fiwareid VARCHAR(255),
-                        fecha_medicion DATE,
+                        parametros TEXT,
+                        mediciones TEXT,
                         so2 NUMERIC,
                         no2 NUMERIC,
                         o3 NUMERIC,
                         co NUMERIC,
                         pm10 NUMERIC,
                         pm25 NUMERIC,
+                        tipoemisio VARCHAR(100),
+                        fecha_carg TIMESTAMPTZ,
+                        calidad_am VARCHAR(100),
+                        fiwareid VARCHAR(255),
                         geo_shape JSONB,
-                        geo_point_2d JSONB
+                        geo_point_2d JSONB,
+                        UNIQUE(objectid, fecha_carg)
                     );
                 """))
                 
@@ -210,18 +214,19 @@ def init_db():
     raise RuntimeError("No se pudo conectar a la base de datos tras 10 intentos.")
 
 
-def load_historical_data(historical_path: str = "/app/historical"):
+def load_historical_real_data(historical_path: str = "", table_name: str = ""):
     """
-    Carga los datos históricos desde archivos CSV a la tabla raw.valencia_air_historical.
+    Carga los datos históricos desde archivos CSV a la tabla de históricos del esquema raw.
     Solo se ejecuta si la tabla está vacía (carga única).
 
     Args:
         historical_path: Ruta al directorio con los archivos CSV históricos
+        table_name: tabla en la db a la que cargar los históricos
     """
     try:
         with engine.connect() as conn:
             # Verificar si ya hay datos históricos cargados
-            result = conn.execute(text("SELECT COUNT(*) FROM raw.valencia_air_historical"))
+            result = conn.execute(text(f"SELECT COUNT(*) FROM raw.{table_name}"))
             count = result.scalar()
 
             if count > 0:
@@ -320,9 +325,9 @@ def load_historical_data(historical_path: str = "/app/historical"):
                         continue
 
                     # Insertar en la base de datos
-                    from sqlalchemy import types
+                    
                     df.to_sql(
-                        'valencia_air_historical',
+                        f'{table_name}',
                         engine,
                         schema='raw',
                         if_exists='append',
@@ -345,3 +350,77 @@ def load_historical_data(historical_path: str = "/app/historical"):
     except Exception as e:
         print(f"❌ Error en la carga de datos históricos: {e}")
         raise
+
+
+def load_historical_simulated_data(historical_path: str = "", table_name: str = ""):
+    """
+    Carga los datos históricos simulados desde archivos CSV a la tabla del esquema raw.
+    Solo se ejecuta si la tabla está vacía.
+
+    Nota: Los archivos CSV simulados ya contienen todos los metadatos (objectid, nombre,
+    geo_shape, etc.) en un único archivo con todas las estaciones.
+    """
+    import json
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(f"SELECT COUNT(*) FROM raw.{table_name}"))
+            if result.scalar() > 0:
+                print(f"⏭️ Datos históricos simulados ya cargados. Saltando carga.")
+                return
+
+        historical_dir = Path(historical_path)
+        if not historical_dir.exists():
+            print(f"⚠️ Directorio no encontrado: {historical_path}")
+            return
+
+        csv_files = list(historical_dir.glob("*.csv"))
+        if not csv_files:
+            print(f"⚠️ No se encontraron archivos CSV en {historical_path}")
+            return
+
+        print(f">> Cargando {len(csv_files)} archivos históricos simulados...")
+        total_records = 0
+
+        for csv_file in csv_files:
+            try:
+                # Leer CSV en chunks para evitar problemas de memoria
+                chunk_size = 10000
+                chunks_loaded = 0
+
+                for chunk in pd.read_csv(csv_file, encoding='utf-8', na_values=['', ' '], chunksize=chunk_size):
+                    # Convertir fecha_carg de string a datetime
+                    if 'fecha_carg' in chunk.columns:
+                        chunk['fecha_carg'] = pd.to_datetime(chunk['fecha_carg'], errors='coerce')
+
+                    # Convertir columnas geo_shape y geo_point_2d de string JSON a dict
+                    if 'geo_shape' in chunk.columns:
+                        chunk['geo_shape'] = chunk['geo_shape'].apply(lambda x: json.loads(x) if pd.notna(x) and isinstance(x, str) else x)
+                    if 'geo_point_2d' in chunk.columns:
+                        chunk['geo_point_2d'] = chunk['geo_point_2d'].apply(lambda x: json.loads(x) if pd.notna(x) and isinstance(x, str) else x)
+
+                    chunk.to_sql(
+                        table_name, engine, schema='raw', if_exists='append', index=False,
+                        dtype={
+                            'geo_shape': types.JSON,
+                            'geo_point_2d': types.JSON,
+                            'fecha_carg': types.DateTime(timezone=True)
+                        }
+                    )
+
+                    chunks_loaded += len(chunk)
+                    total_records += len(chunk)
+
+                print(f"  ✅ {csv_file.name}: {chunks_loaded} registros cargados")
+
+            except Exception as e:
+                print(f"  ❌ Error en {csv_file.name}: {e}")
+                import traceback
+                traceback.print_exc()
+
+        print(f"✅ Carga completada: {total_records} registros insertados.")
+
+    except Exception as e:
+        print(f"❌ Error en carga de históricos simulados: {e}")
+        import traceback
+        traceback.print_exc()

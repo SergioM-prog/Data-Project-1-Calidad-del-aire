@@ -21,7 +21,8 @@ services:
       - CITY=valencia       # Es una variable de entorno que leerá el orquestador main.py y ejecutará sólo la fun. de ingesta de esa ciudad
     env_file: .env
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy  # Espera a que el backend pase el healthcheck
 
   # ingestion-madrid:
   #   image: aq_ingestion:latest
@@ -104,6 +105,12 @@ services:
     depends_on:
       - db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s  # Tiempo de gracia para cargar datos históricos
 
   # # 5. FRONTEND USUARIO (Dash/Plotly - Puerto 8050)
   # frontend:
