@@ -215,7 +215,7 @@ def init_db():
 
 
 def load_historical_real_data(historical_path: str = "", table_name: str = ""):
-    """
+    """table_name
     Carga los datos históricos desde archivos CSV a la tabla de históricos del esquema raw.
     Solo se ejecuta si la tabla está vacía (carga única).
 
@@ -339,7 +339,7 @@ def load_historical_real_data(historical_path: str = "", table_name: str = ""):
                     )
 
                     total_records += len(df)
-                    print(f"  ✅ {csv_file.name}: {len(df)} registros cargados ({metadata['nombre']})")
+                    print(f"✅ {csv_file.name}: {len(df)} registros cargados ({metadata['nombre']})")
 
                 except Exception as e:
                     print(f"  ❌ Error procesando {csv_file.name}: {e}")
