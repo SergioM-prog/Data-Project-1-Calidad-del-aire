@@ -63,7 +63,7 @@ models:
     # - Evita "estaciones fantasma" (mediciones de estaciones no catalogadas)
     # - Si falla → problema en pipeline de ingesta o dim_estaciones desactualizada
     # ========================================================================
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - fecha_medicion
@@ -79,7 +79,7 @@ models:
       # ======================================================================
       - name: fecha_medicion
         description: "Fecha de la medición (granularidad diaria, sin hora)"
-        tests:
+        data_tests:
           - not_null
           - unique:
               config:
@@ -90,7 +90,7 @@ models:
       # ======================================================================
       - name: ciudad
         description: "Nombre de la ciudad (Valencia o Madrid)"
-        tests:
+        data_tests:
           - not_null
           - accepted_values:
               values: ['Valencia', 'Madrid']
@@ -99,7 +99,7 @@ models:
       
       - name: id_estacion
         description: "ID único de la estación de medición"
-        tests:
+        data_tests:
           - not_null
           # ==================================================================
           # NUEVO: Test de relación con dim_estaciones
@@ -120,7 +120,7 @@ models:
       
       - name: nombre_estacion
         description: "Nombre legible de la estación"
-        tests:
+        data_tests:
           - not_null
       
       # ======================================================================
@@ -131,7 +131,7 @@ models:
           Promedio diario de NO₂ (Dióxido de Nitrógeno) en µg/m³.
           Calculado a partir de mediciones horarias.
           Límite OMS 2021: 25 µg/m³ (promedio 24h)
-        tests:
+        data_tests:
           # ==================================================================
           # CAMBIO 2: Test condicional (solo si hay datos de NO2)
           # ==================================================================
@@ -160,7 +160,7 @@ models:
         description: |
           Promedio diario de PM10 (Partículas < 10µm) en µg/m³.
           Límite OMS 2021: 45 µg/m³ (promedio 24h)
-        tests:
+        data_tests:
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 600
@@ -172,7 +172,7 @@ models:
           Promedio diario de PM2.5 (Partículas < 2.5µm) en µg/m³.
           Límite OMS 2021: 15 µg/m³ (promedio 24h)
           Contaminante más peligroso para salud humana.
-        tests:
+        data_tests:
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 500
@@ -184,7 +184,7 @@ models:
       # ======================================================================
       - name: pico_no2
         description: "Valor máximo de NO₂ registrado durante el día (µg/m³)"
-        tests:
+        data_tests:
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 1000
@@ -193,7 +193,7 @@ models:
       
       - name: pico_pm10
         description: "Valor máximo de PM10 registrado durante el día (µg/m³)"
-        tests:
+        data_tests:
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 1000
@@ -208,7 +208,7 @@ models:
           Número de mediciones usadas para calcular los promedios.
           Esperado: ~24 (1 medición por hora).
           Si < 20 → datos incompletos, promedios menos confiables.
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.accepted_range:
               min_value: 1
@@ -220,7 +220,7 @@ models:
         description: |
           Clasificación textual de la calidad del aire según promedio de PM2.5.
           Valores: Excelente, Buena, Moderada, Pobre, Muy Pobre, Peligrosa, Sin Datos
-        tests:
+        data_tests:
           - accepted_values:
               values: 
                 - 'Excelente'
@@ -248,7 +248,7 @@ models:
     # ========================================================================
     # Tests a nivel de tabla
     # ========================================================================
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - fecha_hora
@@ -262,25 +262,25 @@ models:
         description: |
           Clave única compuesta: fecha_hora + ciudad + id_estacion.
           Usada por materialización incremental para evitar duplicados en MERGE.
-        tests:
+        data_tests:
           - not_null
           - unique
       
       - name: fecha_hora
         description: "Timestamp truncado a la hora exacta (ej: 2026-01-20 14:00:00)"
-        tests:
+        data_tests:
           - not_null
       
       - name: ciudad
         description: "Nombre de la ciudad"
-        tests:
+        data_tests:
           - not_null
           - accepted_values:
               values: ['Valencia', 'Madrid']
       
       - name: id_estacion
         description: "ID único de la estación"
-        tests:
+        data_tests:
           - not_null
           - relationships:
               to: ref('dim_estaciones')
@@ -288,7 +288,7 @@ models:
       
       - name: nombre_estacion
         description: "Nombre legible de la estación"
-        tests:
+        data_tests:
           - not_null
       
       # ======================================================================
@@ -296,7 +296,7 @@ models:
       # ======================================================================
       - name: promedio_no2
         description: "Promedio horario de NO₂ en µg/m³"
-        tests:
+        data_tests:
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 500
@@ -322,7 +322,7 @@ models:
         description: |
           Número de mediciones usadas para calcular promedios horarios.
           Útil para detectar horas sin datos.
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.accepted_range:
               min_value: 0
@@ -330,7 +330,7 @@ models:
       
       - name: clasificacion_calidad_hora
         description: "Clasificación de calidad según PM2.5 (OMS 2021)"
-        tests:
+        data_tests:
           - accepted_values:
               values: 
                 - 'Excelente'
