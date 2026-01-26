@@ -2,7 +2,8 @@ with
 
 source as (
 
-    select * from {{ ref('stg_valencia_air') }}
+    select * from {{ ref('int_air_quality_union_hourly') }}
+    where fecha_hora_medicion is not null
 
 ),
 
@@ -15,6 +16,7 @@ weekly_aggregates as (
         extract(year from fecha_hora_medicion) as anio,
         id_estacion,
         nombre_estacion,
+        ciudad,
         round(avg(no2)::numeric, 2)::float as promedio_semanal_no2,
         round(avg(pm10)::numeric, 2)::float as promedio_semanal_pm10,
         round(avg(pm25)::numeric, 2)::float as promedio_semanal_pm25,
@@ -35,10 +37,9 @@ weekly_aggregates as (
             when avg(pm25) <= 15 then 'Semana Moderada'
             when avg(pm25) <= 25 then 'Semana Pobre'
             else 'Semana Muy Contaminada'
-        end as clasificacion_semana,
-        'Valencia' as ciudad
+        end as clasificacion_semana
     from source
-    group by 1, 2, 3, 4, 5, 6
+    group by 1, 2, 3, 4, 5, 6, 7
 
 )
 
