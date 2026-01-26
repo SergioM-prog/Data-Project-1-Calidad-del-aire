@@ -204,7 +204,37 @@ def get_alert_now(station_id: int = Query(..., ge=1)):
     except Exception as e:
         print(f"Error en API alerts/now: {e}")
         raise HTTPException(status_code=500, detail="Error interno al leer alerts/now")
-    
+
+@app.get("/api/v1/station/latest-hourly")
+def get_station_latest_hourly(station_id: int = Query(..., ge=1)):
+    """
+    Devuelve la fila más reciente (última hora) de marts.fct_air_quality_hourly para una estación.
+    """
+    try:
+        query = """
+            SELECT *
+            FROM marts.fct_air_quality_hourly
+            WHERE station_id = %(station_id)s
+            ORDER BY measure_hour DESC
+            LIMIT 1
+        """
+        df = pd.read_sql(query, engine, params={"station_id": station_id})
+
+        if df.empty:
+            return {}
+
+        record = df.to_dict(orient="records")[0]
+
+        # JSON seguro
+        for k, v in list(record.items()):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                record[k] = None
+
+        return record
+
+    except Exception as e:
+        print(f"Error latest-hourly: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
 
 
     

@@ -4,7 +4,7 @@ import pandas as pd # para transformar el JSON en tabla y hacer cálculos
 
 import dash #el freamework web (servidor+callbacks)
 from dash import dcc, html, Input, Output
-import plotly.express as px  # (no lo usamos aún, pero viene bien tenerlo para el heatmap)
+import plotly.express as px  
 from requests.exceptions import HTTPError
 
 
