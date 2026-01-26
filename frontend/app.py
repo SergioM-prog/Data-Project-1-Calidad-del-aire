@@ -40,38 +40,35 @@ WHY_MAP = {
     "PM10": "Partículas en el aire que pueden empeorar alergias o molestias respiratorias.",
     "O3": "Ozono: puede aumentar con sol/calor y provocar tos o irritación.",
     "SO2": "Puede causar molestias respiratorias, sobre todo en personas sensibles.",
-    "CO": "Relacionado con combustión; en niveles altos puede ser peligroso.",
 }
 
-THRESHOLDS = {
-    "PM2.5": [(10, "🟢 Bueno", "#2ecc71"), (20, "🟡 Precaución", "#f1c40f"), (35, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-    "PM10":  [(20, "🟢 Bueno", "#2ecc71"), (40, "🟡 Precaución", "#f1c40f"), (50, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-    "NO2":   [(40, "🟢 Bueno", "#2ecc71"), (100, "🟡 Precaución", "#f1c40f"), (200, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-    "O3":    [(60, "🟢 Bueno", "#2ecc71"), (120, "🟡 Precaución", "#f1c40f"), (180, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-    "SO2":   [(100, "🟢 Bueno", "#2ecc71"), (200, "🟡 Precaución", "#f1c40f"), (350, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-    "CO":    [(2, "🟢 Bueno", "#2ecc71"), (5, "🟡 Precaución", "#f1c40f"), (10, "🟠 Moderado", "#e67e22"), (9999, "🔴 Alto", "#e74c3c")],
-}
+
 
 VALOR_LÍMITE = {
-    "PM2.5": 10,
-    "PM10": 20,
-    "NO2": 40,
-    "O3": 60,
-    "SO2": 100,
-    "CO": 2,
+    "PM2.5": 15,
+    "PM10": 45,
+    "NO2": 25,
+    "O3": 100,
+    "SO2": 40,
 }
 
 def level_for_pollutant(pollutant: str, value):
-    """Devuelve (label, color) según el contaminante y su valor."""
     if value is None:
         return ("⚪ Sin datos", "#95a5a6")
-    rules = THRESHOLDS.get(pollutant)
-    if not rules:
+
+    limite = VALOR_LÍMITE.get(pollutant)
+    if limite is None:
         return ("⚪ Sin umbral", "#95a5a6")
-    for max_v, label, color in rules:
-        if value <= max_v:
-            return (label, color)
-    return ("⚪", "#95a5a6")
+
+    tol = 1e-6
+
+    if value < limite - tol:
+        return ("🟢 Por debajo del límite", "#34a853")
+    elif abs(value - limite) <= tol:
+        return ("🟠 En el límite", "#fbbc05")
+    else:
+        return ("🔴 Límite superado", "#ea4335")
+
 
 
 def severity_style(nivel: int):
@@ -79,16 +76,16 @@ def severity_style(nivel: int):
         return ("#95a5a6", "⚪ Sin datos")
     
     if nivel == 1:
-        return ("#f1c40f", "🟡 Precaución")
+        return ("#ea4335", "🔴 Mala calidad del aire")
 
     if nivel == 2:
-        return ("#e67e22", "🟠 Moderado")
+        return ("#ea4335", "🔴 Mala calidad del aire")
 
     if nivel == 3:
-        return ("#e74c3c", "🔴 Aire malo")
+        return ("#ea4335", "🔴 Mala calidad del aire")
 
     if nivel == 4:
-        return ("#8e44ad", "🟣 Muy malo")
+        return ("#ea4335", "🔴 Mala calidad del aire")
 
     return ("#7f8c8d", "⚪ Sin datos")
 
@@ -116,22 +113,6 @@ def fetch_station_latest_hourly(station_id: int) -> dict:
     return r.json()
 
 #Bloques 
-pollutant_help = html.Div(
-    style={"marginTop": "10px", "fontSize": "13px", "opacity": "0.9", "lineHeight": "1.35"},
-    children=[
-        html.Ul(
-            style={"margin": "8px 0 0 18px"},
-            children=[
-                html.Li([html.B("PM2.5:"), " partículas muy pequeñas que pueden llegar a los pulmones."]),
-                html.Li([html.B("PM10:"),  " polvo, polen u otras partículas del aire que pueden causar molestias respiratorias."]),
-                html.Li([html.B("NO2:"),   " gas asociado al tráfico; irrita vías respiratorias."]),
-                html.Li([html.B("O3:"),    " ozono a nivel del suelo; puede causar irritación."]),
-                html.Li([html.B("SO2:"),   " gas procedente de procesos industriales; puede causar molestias respiratorias."]),
-                html.Li([html.B("CO:"),    " monóxido de carbono, generado por combustión incompleta (vehículos, calefacciones)."]),
-            ],
-        )
-    ],
-)
 
 pollutants_block = html.Div(
     style={
@@ -143,21 +124,10 @@ pollutants_block = html.Div(
         "boxShadow": "0 2px 8px rgba(0,0,0,0.06)",
     },
     children=[
-        html.H4("Contaminantes (última medición)", style={"margin": "0 0 8px 0"}),
+        html.H4("Contaminantes en tu zona", style={"margin": "0 0 8px 0"}),
         html.Div(id="pollutants-subtitle", style={"fontSize": "12px", "opacity": "0.75", "marginBottom": "8px"}),
         dcc.Graph(id="pollutants-bar", style={"height": "360px"}),
-        html.Div(
-            "🔴 El punto rojo indica el límite recomendado para reducir riesgos a la salud. "
-            "Superarlo no implica una alerta, pero se recomienda precaución.",
-            style={
-                "fontSize": "13px",
-                "opacity": "0.8",
-                "marginTop": "6px",
-                "marginBottom": "10px",
-            },
-        ),
-
-        pollutant_help,
+        
     ],
 )
 
@@ -255,7 +225,7 @@ def render_banner(station_id):
         if r.status_code == 404:
             return html.Div(
                 style={
-                    "backgroundColor": "#2ecc71",
+                    "backgroundColor": "#34a853",
                     "color": "black",
                     "padding": "14px",
                     "borderRadius": "8px",
@@ -284,7 +254,7 @@ def render_banner(station_id):
         why = WHY_MAP.get(contaminante, "Puede afectar a la salud respiratoria.")
 
         return html.Div(
-            style={"backgroundColor": color, "color": "black", "padding": "14px", "borderRadius": "8px"},
+            style={"backgroundColor": color, "color": "white", "padding": "14px", "borderRadius": "8px"},
             children=[
                 html.H3(f"{title} · {station_name}", style={"margin": "0 0 6px 0"}),
                 html.Div(f"Recomendación: {reco}", style={"marginTop": "8px", "fontWeight": "700"}),
@@ -336,7 +306,6 @@ def update_pollutants_bar(station_id):
         ("NO2",   data.get("avg_no2")),
         ("O3",    data.get("avg_o3")),
         ("SO2",   data.get("avg_so2")),
-        ("CO",    data.get("avg_co")),
     ]
 
     # Creamos DF y SOLO quitamos filas sin valor actual
@@ -394,7 +363,7 @@ def update_pollutants_bar(station_id):
                 "%{customdata[1]}"
                 "<extra></extra>"
             ),
-            name="Actual",
+            showlegend=False,
         )
     )
 
@@ -406,7 +375,7 @@ def update_pollutants_bar(station_id):
                 x=df_lim["valor_limite"],
                 y=df_lim["pollutant"],
                 mode="markers",
-                marker=dict( symbol="circle", size=10, color="#e74c3c"),
+                marker=dict( symbol="circle", size=10, color="#000000"),
                 hovertemplate="<b>%{y}</b><br>Límite recomendado: %{x:.0f} µg/m³<extra></extra>",
                 name="Límite recomendado",
             )
