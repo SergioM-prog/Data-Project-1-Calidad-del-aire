@@ -10,8 +10,8 @@ sources:
       error_after: {count: 6, period: hour}
     loaded_at_field: ingested_at
     tables:
-      - name: valencia_air
-        description: "Tabla con los datos crudos de la API de Valencia"
+      - name: valencia_air_real_hourly
+        description: "Tabla con los datos horarios en tiempo real de la API de Valencia"
         columns:
           - name: station_id
             description: "Identificador único de la estación (mapeado desde objectid)"
