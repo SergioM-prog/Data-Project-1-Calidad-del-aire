@@ -3,9 +3,9 @@ from config import engine
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
-from sqlalchemy import types
+from sqlalchemy import types, text
 from contextlib import asynccontextmanager
-from database import init_db, load_historical_data
+from database import init_db, load_historical_real_data, load_historical_simulated_data
 from sqlalchemy.dialects.postgresql import insert
 
 
@@ -68,7 +68,9 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         # Cargar datos históricos (solo se ejecuta si la tabla está vacía)
-        load_historical_data()
+        load_historical_real_data("/app/historical/real", "valencia_air_historical_real_daily") # Cargamos los datos históricos reales diarios sacados de la api
+        
+        load_historical_simulated_data("/app/historical/simulated", "valencia_air_historical_simulated_hourly") # Cargamos los datos históricos simulados horarios sacados de la api
         
     except Exception as e:
         print(f"❌ Error inicializando la BD: {e}")
@@ -100,6 +102,20 @@ def insert_with_ignore_duplicates(table, conn, keys, data_iter):
 
 # --- ENDPOINTS ---
 
+@app.get("/health")
+async def health_check():
+    """
+    Endpoint de salud para verificar que el backend está operativo.
+    Verifica conexión a la base de datos.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {e}")
+
+
 # Endpoint para recibir datos del script de Ingesta (POST)
 
 @app.post("/api/ingest", status_code=201)
@@ -115,12 +131,12 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 
         df = pd.DataFrame(payload)
 
-        # 3. Inserción en la tabla raw.valencia_air
+        # 3. Inserción en la tabla raw.valencia_air_real_hourly
         # Usamos method personalizado para ignorar duplicados automáticamente
         # Especificamos dtype para asegurar que los diccionarios se traten como JSONB
-    
+
         df.to_sql(
-            'valencia_air',
+            'valencia_air_real_hourly',
             engine,
             schema='raw',
             if_exists='append',
