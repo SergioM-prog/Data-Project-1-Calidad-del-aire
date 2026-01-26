@@ -1,5 +1,3 @@
-{{ config(materialized='table') }}
-
 with
 
 severidad_config as (
