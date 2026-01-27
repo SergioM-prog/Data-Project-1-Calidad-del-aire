@@ -110,7 +110,7 @@ WHY_MAP = {
 }
 
 
-
+#este helper nos sirve para comparar la medida actual con el "límite recomendado"
 VALOR_LÍMITE = {
     "PM2.5": 15,
     "PM10": 45,
@@ -125,7 +125,7 @@ TIME_OPTIONS = [
     {"label": "Últimas 24 horas", "value": "24h"},
     {"label": "Última semana", "value": "7d"},
 ]
-
+#centraliza el criterio, si cambiamos esto afecta a todos los gráficos.
 def level_for_pollutant(pollutant: str, value):
     if value is None:
         return ("⚪ Sin datos", "#95a5a6")
@@ -163,6 +163,7 @@ def severity_style(nivel: int):
 
     return ("#7f8c8d", "⚪ Sin datos")
 
+
 def fetch_alert_now(station_id: int):
     r = requests.get(
         f"{API_URL}/api/v1/alerts/now",
@@ -171,8 +172,8 @@ def fetch_alert_now(station_id: int):
     )
     if r.status_code == 404:
         return None  # no hay alerta
-    r.raise_for_status()
-    return r.json()
+    r.raise_for_status() #si backend devuelve 400/500 salta un error 
+    return r.json() #convierte la respuesta JSON en dict/list de Python
 
 #tarjeta ranking estaciones con menor contaminación
 def menos_contaminacion(limit: int = 3) -> dict:
@@ -237,6 +238,7 @@ def fetch_station_latest_hourly(station_id: int) -> dict:
     r = requests.get(url, params={"station_id": station_id}, timeout=10)
     r.raise_for_status()
     return r.json()
+
 #fetch del mapa
 def fetch_station_history(station_id: int, window: str) -> pd.DataFrame:
     r = requests.get(
@@ -270,12 +272,7 @@ pollutants_block = html.Div(
     ],
 )
 
-
-
-# ---------- Layout ---------- estructura de la página
-
-
-
+#                       --LAYOUT-- estructura de la página --
 app.layout = html.Div(
     style={"fontFamily": "Arial", "maxWidth": "900px", "margin": "0 auto", "padding": "20px"},
     children=[
@@ -284,12 +281,12 @@ app.layout = html.Div(
         # Fila: Dropdown + Banner (izquierda) | Ranking (derecha, alineado con tarjeta contaminantes)
         html.Div(
             style={"display": "flex", "alignItems": "flex-start", "gap": "20px"},
-            children=[
+            children=[ # "Children": lo que “contiene” un componente
                 # Columna izquierda - Dropdown y Banner (mismo ancho que mapa: 450px)
                 html.Div(
                     style={"width": "450px", "flexShrink": "0"},
                     children=[
-                        dcc.Dropdown(
+                        dcc.Dropdown( #desplegable
                             id="dd-station",
                             placeholder="Cargando estaciones...",
                             clearable=False,
@@ -357,10 +354,10 @@ app.layout = html.Div(
 
 
 # ---------- Callbacks ----------
-
+#callback estaciones
 @app.callback(
-    Output("dd-station", "options"),
-    Output("dd-station", "value"),
+    Output("dd-station", "options"), #lista de estaciones renderizada en UI
+    Output("dd-station", "value"), #estación seleccionada por defecto
     Input("init", "data"),
 )
 def load_stations(_):
@@ -489,7 +486,7 @@ def load_zonas_verdes(_):
     except Exception as e:
         return html.Div(f"Error: {e}", style={"color": "red", "fontSize": "12px"})
 
-
+#CALLBACK DEL BANNER DE ALERTA POR ZONA
 @app.callback(
     Output("alert-banner", "children"),
     Input("dd-station", "value"),
@@ -532,7 +529,6 @@ def render_banner(station_id):
 
         station_name = data.get("nombre_estacion", f"Estación {station_id}")
         contaminante = data.get("contaminante_principal", "—")
-        reco = data.get("recomendacion", "")
         ts = data.get("fecha_hora_alerta", "")
 
         why = WHY_MAP.get(contaminante, "Puede afectar a la salud respiratoria.")
@@ -541,8 +537,7 @@ def render_banner(station_id):
             style={"backgroundColor": color, "color": "white", "padding": "14px", "borderRadius": "8px"},
             children=[
                 html.H3(f"{title} · {station_name}", style={"margin": "0 0 6px 0"}),
-                html.Div(f"Recomendación: {reco}", style={"marginTop": "8px", "fontWeight": "700"}),
-                html.Div(f"Principal contaminante: {contaminante}", style={"marginTop": "10px"}),
+                html.Div(f"Contaminante principal: {contaminante}", style={"marginTop": "8px", "fontWeight": "700"}),
                 html.Div(why, style={"marginTop": "4px", "opacity": "0.95"}),
                 html.Div(f"Última actualización: {ts}", style={"marginTop": "10px", "fontSize": "12px", "opacity": "0.85"}),
             ],
@@ -554,7 +549,8 @@ def render_banner(station_id):
 
     except Exception as e:
         return html.Div(f"❌ Error inesperado: {e}", style={"color": "red"})
-    
+
+#CALLBACK GRÁFICO BARRAS - CONTAMINANTE 
 @app.callback(
     Output("pollutants-bar", "figure"),
     Output("pollutants-subtitle", "children"),
@@ -651,7 +647,7 @@ def update_pollutants_bar(station_id):
         )
     )
 
-    # --- Marca del límite (solo para los que tienen límite numérico) ---
+    # --- Marca del límite ---
     df_lim = df[df["valor_limite"].notna()].copy()
     if not df_lim.empty:
         fig.add_trace(
