@@ -238,7 +238,24 @@ def init_db():
                     ON security.api_key_clients(api_key);
                 """))
 
-                conn.commit() 
+                # 7. Insertar clientes API desde variables de entorno
+                api_clients = {
+                    "ingestion-valencia": os.getenv("INGESTION_VALENCIA_API_KEY"),
+                    "telegram-alerts": os.getenv("TELEGRAM_ALERTS_API_KEY"),
+                }
+
+                for service_name, api_key in api_clients.items():
+                    if api_key:
+                        conn.execute(text("""
+                            INSERT INTO security.api_key_clients (service_name, api_key)
+                            VALUES (:service_name, :api_key)
+                            ON CONFLICT (service_name) DO NOTHING
+                        """), {"service_name": service_name, "api_key": api_key})
+                        print(f"  🔑 Cliente API registrado: {service_name}")
+                    else:
+                        print(f"  ⚠️ API key no encontrada para: {service_name}")
+
+                conn.commit()
                 print("✅ Base de datos lista: Esquemas y tablas RAW creados correctamente.")
                 return 
 
