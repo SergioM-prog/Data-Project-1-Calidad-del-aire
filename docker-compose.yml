@@ -1,3 +1,5 @@
+
+# 1. Servicio BASE DE DATOS Postgres
 services:
   db:
     image: postgres:17-alpine
@@ -7,7 +9,8 @@ services:
       - "5431:5432"
     restart: unless-stopped
 
-  # === INGESTA POR CIUDAD ===
+  # 2. Servicio de INGESTA de la api pública
+
   # Cada ciudad corre en su propio contenedor, usando la misma imagen
   # pero con diferente variable CITY. Esto permite arrancar/parar cada
   # ciudad de forma independiente: docker compose stop ingestion-valencia
@@ -23,15 +26,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy  # Espera a que el backend pase el healthcheck
-
-  # ingestion-madrid:
-  #   image: aq_ingestion:latest
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
-  #     - CITY=madrid
-  #   env_file: .env
-  #   depends_on:
-  #     - backend
 
 # 3. TRANSFORMACIONES DBT (Transformaciones de datos - Cada 5 minutos)
 
@@ -52,6 +46,20 @@ services:
     depends_on:
       - db
 
+  # 4. ALERTAS TELEGRAM (Envío de alertas cada 5 minutos)
+  telegram-alerts:
+    build: ./telegram_alerts
+    pull_policy: build
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 5. DASHBOARD GRAFANA
+
   grafana:
     image: grafana/grafana:latest
     ports:
@@ -68,7 +76,7 @@ services:
       - db
     restart: unless-stopped
 
-  # 4. BACKEND API (Servidor que lee datos - Puerto 8000)
+  # 6. BACKEND API (Servidor que lee datos - Puerto 8000)
   backend:
     build: ./backend
     pull_policy: build  # Fuerza a construir la imagen localmente en lugar de intentar descargarla

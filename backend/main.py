@@ -163,26 +163,37 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 
 
 
-# @app.get("/")
-# def read_root():
-#     return {"status": "ok", "message": "Air Quality API is running"}
+# --- ENDPOINTS DE ALERTAS ---
+
+@app.get("/api/alertas")
+async def get_alertas_pendientes():
+    """Devuelve alertas de contaminación pendientes de enviar a Telegram."""
+    query = """
+        SELECT a.*
+        FROM marts.fct_alertas_actuales_contaminacion a
+        WHERE NOT EXISTS (
+            SELECT 1 FROM raw.alertas_enviadas_telegram e
+            WHERE e.id_estacion = a.id_estacion
+            AND e.fecha_hora_alerta = a.fecha_hora_alerta
+        )
+        ORDER BY a.fecha_hora_alerta DESC
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(query))
+        alertas = [dict(row._mapping) for row in result]
+    return {"alertas": alertas, "total": len(alertas)}
 
 
-# @app.get("/api/v1/hourly-metrics")
-# def get_hourly_metrics(limit: int = 100):
-#     """
-#     Devuelve las últimas métricas horarias.
-#     """
-#     try:
-#         # Usamos Pandas para leer SQL directamente. Es limpio y rápido.
-#         query = f"SELECT * FROM marts.fct_air_quality_hourly ORDER BY measure_hour DESC LIMIT {limit}"
-        
-#         # Ejecutamos la consulta usando el engine de database.py
-#         df = pd.read_sql(query, engine)
-        
-#         # Convertimos a diccionario (JSON)
-#         return df.to_dict(orient="records")
-        
-#     except Exception as e:
-#         print(f"Error en API: {e}")
-#         raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
+@app.post("/api/alertas/registrar-envio")
+async def registrar_alerta_enviada(alertas: list[dict]):
+    """Registra en el histórico las alertas enviadas a Telegram."""
+    with engine.connect() as conn:
+        for alerta in alertas:
+            conn.execute(text("""
+                INSERT INTO raw.alertas_enviadas_telegram
+                (id_estacion, fecha_hora_alerta, nombre_estacion, ciudad, parametro, valor, limite)
+                VALUES (:id_estacion, :fecha_hora_alerta, :nombre_estacion, :ciudad, :parametro, :valor, :limite)
+                ON CONFLICT (id_estacion, fecha_hora_alerta, parametro) DO NOTHING
+            """), alerta)
+        conn.commit()
+    return {"status": "success", "alertas_registradas": len(alertas)}

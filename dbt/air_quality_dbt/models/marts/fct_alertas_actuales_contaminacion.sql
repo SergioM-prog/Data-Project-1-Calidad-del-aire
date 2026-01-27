@@ -39,8 +39,7 @@ select
     (m.pm25 > l.p75_pm25) as alerta_pm25,
     (m.so2 > l.p75_so2) as alerta_so2,
     (m.o3 > l.p75_o3) as alerta_o3,
-    (m.co > l.p75_co) as alerta_co,
-    false as alerta_informada
+    (m.co > l.p75_co) as alerta_co
 from mediciones m
 inner join limites l on m.id_estacion = l.id_estacion and m.hora = l.hora
 where
