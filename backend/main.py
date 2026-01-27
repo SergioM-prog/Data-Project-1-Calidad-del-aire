@@ -78,6 +78,11 @@ class AirQualityInbound(BaseModel):
 
 # --- ENDPOINTS ---
 
+@app.get("/health")
+def health_check():
+    """Endpoint para healthcheck de Docker."""
+    return {"status": "ok"}
+
 # Endpoint para recibir datos del script de Ingesta (POST)
 
 @app.post("/api/ingest", status_code=201)
@@ -143,6 +148,7 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 #     except Exception as e:
 #         print(f"Error en API: {e}")
 #         raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
+
 @app.get("/api/v1/hourly-metrics")
 def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000)):
     """
@@ -251,7 +257,7 @@ def air_quality_history(station_id: int, window: str = "now"):
         "nivel_severidad": 3,
     })
 
-    
+
     coords = STATION_COORDS.get(station_id)
     if coords:
         for r in rows:
@@ -259,5 +265,98 @@ def air_quality_history(station_id: int, window: str = "now"):
             r["lon"] = coords["lon"]
 
     return rows
+
+
+@app.get("/api/v1/stations")
+def get_stations():
+    """
+    Devuelve la lista de estaciones únicas con su ID y nombre.
+    """
+    try:
+        query = """
+            SELECT DISTINCT station_id, station_name
+            FROM marts.fct_air_quality_hourly
+            WHERE station_name IS NOT NULL
+            ORDER BY station_name
+        """
+        df = pd.read_sql(query, engine)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error en stations: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener estaciones")
+
+
+@app.get("/api/v1/zonas-verdes")
+def get_zonas_verdes(limit: int = Query(3, ge=1, le=10)):
+    """
+    Devuelve las estaciones con mejor calidad del aire (menor contaminación).
+    Solo incluye estaciones donde NINGÚN contaminante supere su umbral.
+    Umbrales: NO2=25, PM2.5=15, PM10=45, O3=100, SO2=40 µg/m³
+    """
+    try:
+        query = """
+            WITH ultimas_mediciones AS (
+                SELECT DISTINCT ON (station_id)
+                    station_id,
+                    station_name,
+                    avg_no2,
+                    avg_pm25,
+                    avg_pm10,
+                    avg_o3,
+                    avg_so2,
+                    measure_hour
+                FROM marts.fct_air_quality_hourly
+                ORDER BY station_id, measure_hour DESC
+            ),
+            sin_alertas AS (
+                SELECT
+                    station_id,
+                    station_name,
+                    measure_hour,
+                    avg_no2,
+                    avg_pm25,
+                    avg_pm10,
+                    avg_o3,
+                    avg_so2,
+                    COALESCE(avg_no2, 0) + COALESCE(avg_pm25, 0) + COALESCE(avg_pm10, 0) +
+                    COALESCE(avg_o3, 0) + COALESCE(avg_so2, 0) AS indice_contaminacion
+                FROM ultimas_mediciones
+                WHERE station_name IS NOT NULL
+                  AND (avg_no2 IS NULL OR avg_no2 <= 25)
+                  AND (avg_pm25 IS NULL OR avg_pm25 <= 15)
+                  AND (avg_pm10 IS NULL OR avg_pm10 <= 45)
+                  AND (avg_o3 IS NULL OR avg_o3 <= 100)
+                  AND (avg_so2 IS NULL OR avg_so2 <= 40)
+            )
+            SELECT
+                station_id,
+                station_name,
+                avg_no2,
+                avg_pm25,
+                avg_pm10,
+                avg_o3,
+                avg_so2,
+                indice_contaminacion,
+                ROW_NUMBER() OVER (ORDER BY indice_contaminacion ASC) as ranking_pos
+            FROM sin_alertas
+            ORDER BY indice_contaminacion ASC
+            LIMIT %(limit)s
+        """
+        df = pd.read_sql(query, engine, params={"limit": limit})
+
+        if df.empty:
+            return []
+
+        records = df.to_dict(orient="records")
+        for row in records:
+            for k, v in row.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    row[k] = None
+
+        return records
+
+    except Exception as e:
+        print(f"Error en zonas-verdes: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener zonas verdes")
 
     

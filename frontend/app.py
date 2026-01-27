@@ -15,6 +15,70 @@ API_URL = os.getenv("API_URL", "http://backend:8000") #lee la variable API_URL
 
 app = dash.Dash(__name__, title="🌤️ App Ciudadana | Calidad del aire") #Creamos la app "Dash" y título del navegador
 
+# CSS personalizado para tooltips
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            .podio-card {
+                position: relative;
+            }
+            .podio-card .tooltip-content {
+                visibility: hidden;
+                opacity: 0;
+                position: absolute;
+                bottom: 105%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: #1a202c;
+                color: white;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 11px;
+                white-space: pre-line;
+                z-index: 1000;
+                min-width: 160px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                transition: opacity 0.2s, visibility 0.2s;
+                text-align: left;
+                line-height: 1.5;
+            }
+            .podio-card .tooltip-content::after {
+                content: "";
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                margin-left: -6px;
+                border-width: 6px;
+                border-style: solid;
+                border-color: #1a202c transparent transparent transparent;
+            }
+            .podio-card:hover .tooltip-content {
+                visibility: visible;
+                opacity: 1;
+            }
+            .podio-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
+
 
 # ---------- Helpers ----------
 
@@ -110,6 +174,11 @@ def fetch_alert_now(station_id: int):
     r.raise_for_status()
     return r.json()
 
+#tarjeta ranking estaciones con menor contaminación
+def menos_contaminacion(limit: int = 3) -> dict:
+    r = requests.get(f"{API_URL}/api/v1/zonas-verdes", params={"limit": limit}, timeout=20)
+    r.raise_for_status()
+    return r.json()
 
 
 #mapa
@@ -185,18 +254,19 @@ def fetch_station_history(station_id: int, window: str) -> pd.DataFrame:
 
 pollutants_block = html.Div(
     style={
-        "marginTop": "16px",
-        "padding": "12px",
+        "width": "420px",
+        "height": "300px",
+        "padding": "20px",
         "borderRadius": "10px",
         "border": "1px solid #e5e7eb",
         "backgroundColor": "white",
         "boxShadow": "0 2px 8px rgba(0,0,0,0.06)",
+        "boxSizing": "border-box",
     },
     children=[
-        html.H4("Contaminantes en tu zona", style={"margin": "0 0 8px 0"}),
-        html.Div(id="pollutants-subtitle", style={"fontSize": "12px", "opacity": "0.75", "marginBottom": "8px"}),
-        dcc.Graph(id="pollutants-bar", style={"height": "360px"}),
-        
+        html.H4("Contaminantes en tu zona", style={"margin": "0 0 4px 0", "fontSize": "14px"}),
+        html.Div(id="pollutants-subtitle", style={"fontSize": "11px", "opacity": "0.75", "marginBottom": "4px"}),
+        dcc.Graph(id="pollutants-bar", style={"height": "230px"}),
     ],
 )
 
@@ -204,47 +274,85 @@ pollutants_block = html.Div(
 
 # ---------- Layout ---------- estructura de la página
 
+
+
 app.layout = html.Div(
     style={"fontFamily": "Arial", "maxWidth": "900px", "margin": "0 auto", "padding": "20px"},
     children=[
-        html.H2("🌤️ Selecciona tu estación"),
+        html.H2("Selecciona tu estación"),
 
-        dcc.Dropdown(
-            id="dd-station",
-            placeholder="Cargando estaciones...",
-            clearable=False,
+        # Fila: Dropdown + Banner (izquierda) | Ranking (derecha, alineado con tarjeta contaminantes)
+        html.Div(
+            style={"display": "flex", "alignItems": "flex-start", "gap": "20px"},
+            children=[
+                # Columna izquierda - Dropdown y Banner (mismo ancho que mapa: 450px)
+                html.Div(
+                    style={"width": "450px", "flexShrink": "0"},
+                    children=[
+                        dcc.Dropdown(
+                            id="dd-station",
+                            placeholder="Cargando estaciones...",
+                            clearable=False,
+                            style={"width": "100%", "maxWidth": "400px"},
+                        ),
+                        html.Div(id="alert-banner", style={"marginTop": "12px", "maxWidth": "400px"}),
+                    ],
+                ),
+                # Columna derecha - Ranking zonas verdes (mismo ancho que tarjeta contaminantes)
+                html.Div(
+                    style={
+                        "width": "420px",
+                        "flexShrink": "0",
+                        "backgroundColor": "#f0fdf4",
+                        "borderRadius": "15px",
+                        "padding": "20px",
+                        "border": "1px solid #dcfce7",
+                        "boxShadow": "0 4px 12px rgba(0,0,0,0.05)",
+                        "boxSizing": "border-box",
+                    },
+                    children=[
+                        html.H4("Ranking mejores zonas", style={"margin": "0 0 4px 0", "color": "#166534", "fontSize": "16px", "fontWeight": "700"}),
+                        html.P("Aire más puro ahora mismo", style={"margin": "0 0 15px 0", "fontSize": "12px", "color": "#15803d"}),
+                        html.Div(id="zonas-verdes-list"),
+                    ]
+                ),
+            ],
         ),
-        html.Div(id="alert-banner", style={"marginTop": "12px"}),
 
-        dcc.RadioItems(
-            id="time-range",
-            options=TIME_OPTIONS,
-            value="now",
-            inline=True,
-            style={"marginTop": "10px"},
+        # Fila: Mapa (izquierda) + Gráfico contaminantes (derecha)
+        html.Div(
+            style={"display": "flex", "gap": "20px", "marginTop": "15px"},
+            children=[
+                # Mapa + selector de tiempo
+                html.Div(
+                    children=[
+                        dcc.Graph(
+                            id="map-graph",
+                            style={"height": "300px", "width": "450px"},
+                        ),
+                        dcc.RadioItems(
+                            id="time-range",
+                            options=TIME_OPTIONS,
+                            value="now",
+                            inline=True,
+                            style={"marginTop": "8px", "fontSize": "12px"},
+                        ),
+                    ],
+                ),
+                pollutants_block,
+            ],
         ),
-   
-        dcc.Graph(
-            id="map-graph",
-            style={"height": "520px", "marginTop": "15px"},
-        ),
-
-
 
         html.Div(
             id="cards",
-            style={"display": "flex", "gap": "12px", "marginTop": "12px"},
+            style={"display": "flex", "gap": "12px", "marginTop": "12px", "width":"70%"},
         ),
-
-        pollutants_block,
 
         html.Div(id="status", style={"marginTop": "12px", "opacity": "0.8"}),
 
         dcc.Store(id="init", data=True),
-    ],
+    ]
 )
-
-
 
 
 
@@ -253,42 +361,133 @@ app.layout = html.Div(
 @app.callback(
     Output("dd-station", "options"),
     Output("dd-station", "value"),
-    Output("status", "children"),
     Input("init", "data"),
 )
 def load_stations(_):
     try:
-        response = requests.get(
-            f"{API_URL}/api/v1/hourly-metrics",
-            params={"limit": 5000},
-            timeout=15
-        )
-        response.raise_for_status()
-
-        df = pd.DataFrame(response.json())
-
-        if "station_id" not in df.columns or "station_name" not in df.columns:
-            return [], None, "❌ La API no devuelve station_id / station_name"
-
-        stations = (
-            df[["station_id", "station_name"]]
-            .dropna()
-            .drop_duplicates()
-            .sort_values("station_name")
-        )
+        r = requests.get(f"{API_URL}/api/v1/stations", timeout=10)
+        r.raise_for_status()
+        stations = r.json()
 
         options = [
-            {"label": row["station_name"], "value": int(row["station_id"])}
-            for _, row in stations.iterrows()
+            {"label": s["station_name"], "value": s["station_id"]}
+            for s in stations
         ]
 
+        # Seleccionar la primera estación por defecto si hay opciones
         default_value = options[0]["value"] if options else None
-
-        return options, default_value, None 
-
+        return options, default_value
     except Exception as e:
-        return [], None, f"❌ Error cargando estaciones: {e}"
+        print(f"Error cargando estaciones: {e}")
+        return [], None
 
+
+@app.callback(
+    Output("zonas-verdes-list", "children"),
+    Input("init", "data"),
+)
+def load_zonas_verdes(_):
+    try:
+        data = menos_contaminacion(limit=3)
+        if not data:
+            return html.Div("No hay datos disponibles", style={"opacity": "0.7", "fontSize": "12px"})
+
+        medallas = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+        # Configuración del podio: tamaño y altura para cada posición
+        podio_config = {
+            1: {"height": "100px", "fontSize": "28px", "nameFontSize": "13px", "marginTop": "0px"},
+            2: {"height": "85px", "fontSize": "22px", "nameFontSize": "12px", "marginTop": "15px"},
+            3: {"height": "75px", "fontSize": "20px", "nameFontSize": "11px", "marginTop": "25px"},
+        }
+
+        def formato_valor(val):
+            """Formatea el valor del contaminante para el tooltip"""
+            if val is None:
+                return "N/D"
+            return f"{val:.1f}"
+
+        def crear_tooltip(zona):
+            """Crea el texto del tooltip con los niveles de contaminantes"""
+            lineas = [f"📍 {zona.get('station_name', 'Estación')}"]
+            lineas.append("─" * 20)
+            lineas.append(f"NO₂:   {formato_valor(zona.get('avg_no2'))} µg/m³")
+            lineas.append(f"PM2.5: {formato_valor(zona.get('avg_pm25'))} µg/m³")
+            lineas.append(f"PM10:  {formato_valor(zona.get('avg_pm10'))} µg/m³")
+            lineas.append(f"O₃:    {formato_valor(zona.get('avg_o3'))} µg/m³")
+            lineas.append(f"SO₂:   {formato_valor(zona.get('avg_so2'))} µg/m³")
+            return "\n".join(lineas)
+
+        def crear_podio_card(posicion, zona):
+            nombre = zona.get("station_name", "Estación desconocida")
+            config = podio_config[posicion]
+            tooltip_text = crear_tooltip(zona)
+
+            return html.Div(
+                className="podio-card",
+                style={
+                    "backgroundColor": "white",
+                    "padding": "10px",
+                    "borderRadius": "10px",
+                    "border": "1px solid #f0f0f0",
+                    "boxShadow": "0 2px 4px rgba(0,0,0,0.05)",
+                    "textAlign": "center",
+                    "height": config["height"],
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "marginTop": config["marginTop"],
+                    "flex": "1",
+                    "cursor": "pointer",
+                    "transition": "transform 0.2s, box-shadow 0.2s",
+                },
+                children=[
+                    # Tooltip que aparece al hacer hover
+                    html.Div(tooltip_text, className="tooltip-content"),
+                    html.Span(medallas.get(posicion, "📍"), style={"fontSize": config["fontSize"]}),
+                    html.Div(
+                        nombre,
+                        style={
+                            "fontWeight": "700",
+                            "fontSize": config["nameFontSize"],
+                            "color": "#1a202c",
+                            "marginTop": "6px",
+                            "lineHeight": "1.2",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                            "maxWidth": "120px",
+                        }
+                    ),
+                ]
+            )
+
+        # Crear las cards para cada posición (si existen)
+        cards = {}
+        for i, zona in enumerate(data, 1):
+            if i <= 3:
+                cards[i] = crear_podio_card(i, zona)
+
+        # Orden del podio: 2º | 1º | 3º
+        podio_items = []
+        if 2 in cards:
+            podio_items.append(cards[2])
+        if 1 in cards:
+            podio_items.append(cards[1])
+        if 3 in cards:
+            podio_items.append(cards[3])
+
+        return html.Div(
+            style={
+                "display": "flex",
+                "alignItems": "flex-end",
+                "justifyContent": "center",
+                "gap": "12px",
+            },
+            children=podio_items
+        )
+    except Exception as e:
+        return html.Div(f"Error: {e}", style={"color": "red", "fontSize": "12px"})
 
 
 @app.callback(
