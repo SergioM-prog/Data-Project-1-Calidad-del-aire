@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security import APIKeyHeader
 from config import engine
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
@@ -84,6 +85,33 @@ app = FastAPI(
     description="API de aislamiento para proteger el acceso a air_quality_db",
     version="1.0.0"
 )
+
+# ----------------------------------
+
+# --- AUTENTICACIÓN M2M ---
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
+    """
+    Dependencia de FastAPI para validar API keys.
+    Verifica que la key exista en security.api_key_clients y esté activa.
+    Retorna el nombre del servicio autenticado.
+    """
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API Key requerida. Incluye el header 'X-API-Key'.")
+
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT service_name FROM security.api_key_clients
+            WHERE api_key = :api_key AND is_active = TRUE
+        """), {"api_key": api_key})
+        client = result.fetchone()
+
+    if not client:
+        raise HTTPException(status_code=403, detail="API Key inválida o servicio desactivado.")
+
+    return client.service_name
 
 # ----------------------------------
 
