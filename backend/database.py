@@ -126,6 +126,7 @@ def init_db():
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS intermediate;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS marts;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS alerts;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS security;"))
 
                 # 2. Tabla para Valencia (datos en tiempo real de la API)
                 conn.execute(text("""
@@ -218,6 +219,23 @@ def init_db():
                         limite NUMERIC,
                         UNIQUE(id_estacion, fecha_hora_alerta, parametro)
                     );
+                """))
+
+                # 6. Tabla para autenticación M2M (Machine-to-Machine)
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS security.api_key_clients (
+                        id SERIAL PRIMARY KEY,
+                        service_name VARCHAR(100) UNIQUE NOT NULL,
+                        api_key VARCHAR(255) UNIQUE NOT NULL,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                    );
+                """))
+
+                # Índice para búsquedas rápidas por api_key
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_api_key_clients_api_key
+                    ON security.api_key_clients(api_key);
                 """))
 
                 conn.commit() 
