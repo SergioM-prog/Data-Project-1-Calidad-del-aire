@@ -1,5 +1,9 @@
 import requests
 from utils import f_llamada_api
+from config import API_KEY
+
+# Headers para autenticación M2M
+AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 def f_run_ingestion_valencia(valencia_api_url, barrier_api_url):
     """
@@ -20,10 +24,10 @@ def f_run_ingestion_valencia(valencia_api_url, barrier_api_url):
         # --- PASO 2: Enviar los datos a nuestra API de Barrera ---
         # barrier_api_url será algo como "http://backend:8000/api/ingest"
         print(f">> Enviando {len(estaciones)} estaciones a la API de Barrera...")
-        
-        # Enviamos la lista completa de estaciones. 
+
+        # Enviamos la lista completa de estaciones.
         # FastAPI la validará automáticamente con la clase AirQualityInbound
-        api_response = requests.post(barrier_api_url, json=estaciones)
+        api_response = requests.post(barrier_api_url, headers=AUTH_HEADERS, json=estaciones)
 
         # --- PASO 3: Verificar el resultado ---
         if api_response.status_code == 201:

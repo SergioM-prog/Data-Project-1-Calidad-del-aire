@@ -1,6 +1,9 @@
 import time
 import requests
-from config import BOT_TOKEN, CANAL_ID, BARRIER_API_URL, CHECK_INTERVAL, PARAMETROS
+from config import BOT_TOKEN, CANAL_ID, BARRIER_API_URL, CHECK_INTERVAL, PARAMETROS, API_KEY
+
+# Headers para autenticación M2M
+AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 
 
@@ -8,7 +11,11 @@ from config import BOT_TOKEN, CANAL_ID, BARRIER_API_URL, CHECK_INTERVAL, PARAMET
 def obtener_alertas():
     """Obtiene alertas pendientes desde la API."""
     try:
-        response = requests.get(f"{BARRIER_API_URL}/api/alertas", timeout=30)
+        response = requests.get(
+            f"{BARRIER_API_URL}/api/alertas",
+            headers=AUTH_HEADERS,
+            timeout=30
+        )
         response.raise_for_status()
         return response.json().get("alertas", [])
     except requests.RequestException as e:
@@ -38,6 +45,7 @@ def registrar_envio(alertas_enviadas):
     try:
         requests.post(
             f"{BARRIER_API_URL}/api/alertas/registrar-envio",
+            headers=AUTH_HEADERS,
             json=alertas_enviadas,
             timeout=30
         )
