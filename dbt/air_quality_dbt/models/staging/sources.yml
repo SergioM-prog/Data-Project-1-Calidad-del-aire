@@ -10,23 +10,23 @@ sources:
       error_after: {count: 6, period: hour}
     loaded_at_field: ingested_at
     tables:
-      - name: valencia_air
-        description: "Tabla con los datos crudos de la API de Valencia"
+      - name: valencia_air_real_hourly
+        description: "Tabla con los datos horarios en tiempo real de la API de Valencia"
         columns:
           - name: station_id
             description: "Identificador único de la estación (mapeado desde objectid)"
-            tests:
+            data_tests:
               - not_null      # Garantiza que cada medida esté asociada a una estación
           - name: measure_timestamp
             description: "Timestamp de cuándo se tomó la medición (de la API)"
-            tests:
+            data_tests:
               - not_null
-          
+
           - name: ingested_at
             description: "Timestamp de cuándo guardamos el dato en nuestra BD"
-            tests:
+            data_tests:
               - not_null
-        tests:
+        data_tests:
           - dbt_utils.unique_combination_of_columns:
               combination_of_columns:
                 - station_id
@@ -34,6 +34,46 @@ sources:
               config:
                 severity: error  # Falla el build si hay duplicados
                 error_if: ">0"   # Cualquier duplicado es error crítico
+
+      - name: valencia_air_historical_real_daily
+        description: "Tabla con datos históricos REALES diarios de Valencia (2014-2025). Cargados desde CSVs."
+        columns:
+          - name: objectid
+            description: "Identificador único de la estación"
+            data_tests:
+              - not_null
+          - name: fecha_medicion
+            description: "Fecha de la medición diaria"
+            data_tests:
+              - not_null
+          - name: ingested_at
+            description: "Timestamp de cuándo se cargó el dato en la BD"
+            data_tests:
+              - not_null
+
+      - name: valencia_air_historical_simulated_hourly
+        description: "Tabla con datos históricos SIMULADOS horarios de Valencia (2025-2026). Cargados desde CSVs."
+        columns:
+          - name: objectid
+            description: "Identificador único de la estación"
+            data_tests:
+              - not_null
+          - name: fecha_carg
+            description: "Timestamp de la medición horaria simulada"
+            data_tests:
+              - not_null
+          - name: ingested_at
+            description: "Timestamp de cuándo se cargó el dato en la BD"
+            data_tests:
+              - not_null
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              combination_of_columns:
+                - objectid
+                - fecha_carg
+              config:
+                severity: error
+                error_if: ">0"
 
       # - name: raw.madrid_air
       #   description: "Tabla con los datos crudos de la API de Madrid (formato JSONB)"

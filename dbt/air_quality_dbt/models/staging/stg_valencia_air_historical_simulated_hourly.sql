@@ -1,11 +1,12 @@
--- https://docs.getdbt.com/docs/build/materializations 
+-- Staging para datos históricos SIMULADOS horarios de Valencia (2025-2026)
+-- Fuente: CSV simulados cargados en raw.valencia_air_historical_simulated_hourly
 
 SELECT
     -- Identificadores básicos
     objectid AS id_estacion,
     nombre AS nombre_estacion,
 
-    -- Contaminantes (ya vienen como NUMERIC de la tabla raw, los convertimos a FLOAT)
+    -- Contaminantes (convertimos NUMERIC a FLOAT para consistencia)
     no2::FLOAT AS no2,
     pm10::FLOAT AS pm10,
     so2::FLOAT AS so2,
@@ -25,7 +26,7 @@ SELECT
     (geo_point_2d->>'lat')::FLOAT AS latitud,
     (geo_point_2d->>'lon')::FLOAT AS longitud,
 
-    -- Timestamps (marcas de tiempo)
+    -- Timestamps
     fecha_carg AS fecha_hora_medicion,
     ingested_at AS fecha_ingesta,
 
@@ -37,7 +38,7 @@ SELECT
     mediciones AS mediciones_texto,
     fiwareid AS fiware_id
 
-FROM {{ source('air_quality', 'valencia_air_real_hourly') }}
+FROM {{ source('air_quality', 'valencia_air_historical_simulated_hourly') }}
 
 -- Filtrar solo registros con timestamp válido
 WHERE fecha_carg IS NOT NULL
