@@ -165,7 +165,7 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 
 # --- ENDPOINTS DE ALERTAS ---
 
-@app.get("/api/v1/alertas")
+@app.get("/api/alertas")
 async def get_alertas_pendientes():
     """Devuelve alertas de contaminación pendientes de enviar a Telegram."""
     query = """
@@ -184,7 +184,7 @@ async def get_alertas_pendientes():
     return {"alertas": alertas, "total": len(alertas)}
 
 
-@app.post("/api/v1/alertas/registrar-envio")
+@app.post("/api/alertas/registrar-envio")
 async def registrar_alerta_enviada(alertas: list[dict]):
     """Registra en el histórico las alertas enviadas a Telegram."""
     with engine.connect() as conn:
