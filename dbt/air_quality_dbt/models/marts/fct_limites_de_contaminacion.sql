@@ -10,12 +10,12 @@ select
     nombre_estacion,
     ciudad,
     extract(hour from fecha_hora_medicion)::int as hora,
-    round(avg(no2)::numeric, 2)::float as promedio_no2,
-    round(avg(pm10)::numeric, 2)::float as promedio_pm10,
-    round(avg(pm25)::numeric, 2)::float as promedio_pm25,
-    round(avg(so2)::numeric, 2)::float as promedio_so2,
-    round(avg(o3)::numeric, 2)::float as promedio_o3,
-    round(avg(co)::numeric, 2)::float as promedio_co,
+    round(percentile_cont(0.75) within group (order by no2)::numeric, 2)::float as p75_no2,
+    round(percentile_cont(0.75) within group (order by pm10)::numeric, 2)::float as p75_pm10,
+    round(percentile_cont(0.75) within group (order by pm25)::numeric, 2)::float as p75_pm25,
+    round(percentile_cont(0.75) within group (order by so2)::numeric, 2)::float as p75_so2,
+    round(percentile_cont(0.75) within group (order by o3)::numeric, 2)::float as p75_o3,
+    round(percentile_cont(0.75) within group (order by co)::numeric, 2)::float as p75_co,
     count(*) as total_mediciones
 from source
 group by id_estacion, nombre_estacion, ciudad, hora
