@@ -147,7 +147,7 @@ async def health_check():
 # Endpoint para recibir datos del script de Ingesta (POST)
 
 @app.post("/api/ingest", status_code=201)
-async def ingest_air_data(data: list[AirQualityInbound]):
+async def ingest_air_data(data: list[AirQualityInbound], service: str = Depends(verify_api_key)):
     try:
         # 1. Convertimos la lista de modelos Pydantic a una lista de diccionarios Python
         # model_dump() es el estándar moderno de Pydantic v2
@@ -194,7 +194,7 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 # --- ENDPOINTS DE ALERTAS ---
 
 @app.get("/api/alertas")
-async def get_alertas_pendientes():
+async def get_alertas_pendientes(service: str = Depends(verify_api_key)):
     """Devuelve alertas de contaminación pendientes de enviar a Telegram."""
     query = """
         SELECT a.*
@@ -213,7 +213,7 @@ async def get_alertas_pendientes():
 
 
 @app.post("/api/alertas/registrar-envio")
-async def registrar_alerta_enviada(alertas: list[dict]):
+async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(verify_api_key)):
     """Registra en el histórico las alertas enviadas a Telegram."""
     with engine.connect() as conn:
         for alerta in alertas:
