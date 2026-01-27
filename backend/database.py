@@ -125,6 +125,7 @@ def init_db():
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS intermediate;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS marts;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS alerts;"))
 
                 # 2. Tabla para Valencia (datos en tiempo real de la API)
                 conn.execute(text("""
@@ -205,7 +206,7 @@ def init_db():
 
                 # 5. Tabla para registro de alertas enviadas a Telegram (histórico permanente)
                 conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS raw.alertas_enviadas_telegram (
+                    CREATE TABLE IF NOT EXISTS alerts.alertas_enviadas_telegram (
                         id SERIAL PRIMARY KEY,
                         fecha_envio TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         id_estacion INTEGER NOT NULL,

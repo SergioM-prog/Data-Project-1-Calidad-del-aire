@@ -172,7 +172,7 @@ async def get_alertas_pendientes():
         SELECT a.*
         FROM marts.fct_alertas_actuales_contaminacion a
         WHERE NOT EXISTS (
-            SELECT 1 FROM raw.alertas_enviadas_telegram e
+            SELECT 1 FROM alerts.alertas_enviadas_telegram e
             WHERE e.id_estacion = a.id_estacion
             AND e.fecha_hora_alerta = a.fecha_hora_alerta
         )
@@ -190,7 +190,7 @@ async def registrar_alerta_enviada(alertas: list[dict]):
     with engine.connect() as conn:
         for alerta in alertas:
             conn.execute(text("""
-                INSERT INTO raw.alertas_enviadas_telegram
+                INSERT INTO alerts.alertas_enviadas_telegram
                 (id_estacion, fecha_hora_alerta, nombre_estacion, ciudad, parametro, valor, limite)
                 VALUES (:id_estacion, :fecha_hora_alerta, :nombre_estacion, :ciudad, :parametro, :valor, :limite)
                 ON CONFLICT (id_estacion, fecha_hora_alerta, parametro) DO NOTHING
