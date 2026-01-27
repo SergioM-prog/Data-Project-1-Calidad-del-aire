@@ -13,6 +13,8 @@ estaciones_agregadas as (
         id_estacion,
         nombre_estacion,
         ciudad,
+        max(latitud) as latitud,
+        max(longitud) as longitud,
         min(fecha_hora_medicion) as primera_medicion,
         max(fecha_hora_medicion) as ultima_medicion,
         count(*) as total_mediciones,

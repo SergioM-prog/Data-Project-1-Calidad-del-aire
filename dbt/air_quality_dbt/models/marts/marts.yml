@@ -113,7 +113,7 @@ models:
           # - Si falla → hay mediciones de estación no catalogada
           # ==================================================================
           - relationships:
-              to: ref('dim_estaciones')
+              to: ref('fct_dim_estaciones')
               field: id_estacion
               config:
                 severity: error
@@ -283,7 +283,7 @@ models:
         data_tests:
           - not_null
           - relationships:
-              to: ref('dim_estaciones')
+              to: ref('fct_dim_estaciones')
               field: id_estacion
       
       - name: nombre_estacion
