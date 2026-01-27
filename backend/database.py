@@ -202,7 +202,23 @@ def init_db():
                         UNIQUE(objectid, fecha_carg)
                     );
                 """))
-                
+
+                # 5. Tabla para registro de alertas enviadas a Telegram (histórico permanente)
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS raw.alertas_enviadas_telegram (
+                        id SERIAL PRIMARY KEY,
+                        fecha_envio TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                        id_estacion INTEGER NOT NULL,
+                        fecha_hora_alerta TIMESTAMPTZ NOT NULL,
+                        nombre_estacion VARCHAR(255),
+                        ciudad VARCHAR(100),
+                        parametro VARCHAR(10) NOT NULL,
+                        valor NUMERIC,
+                        limite NUMERIC,
+                        UNIQUE(id_estacion, fecha_hora_alerta, parametro)
+                    );
+                """))
+
                 conn.commit() 
                 print("✅ Base de datos lista: Esquemas y tablas RAW creados correctamente.")
                 return 
