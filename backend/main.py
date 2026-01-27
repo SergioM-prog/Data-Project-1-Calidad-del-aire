@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security import APIKeyHeader
 from config import engine
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
@@ -87,6 +88,33 @@ app = FastAPI(
 
 # ----------------------------------
 
+# --- AUTENTICACIÓN M2M ---
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
+    """
+    Dependencia de FastAPI para validar API keys.
+    Verifica que la key exista en security.api_key_clients y esté activa.
+    Retorna el nombre del servicio autenticado.
+    """
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API Key requerida. Incluye el header 'X-API-Key'.")
+
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT service_name FROM security.api_key_clients
+            WHERE api_key = :api_key AND is_active = TRUE
+        """), {"api_key": api_key})
+        client = result.fetchone()
+
+    if not client:
+        raise HTTPException(status_code=403, detail="API Key inválida o servicio desactivado.")
+
+    return client.service_name
+
+# ----------------------------------
+
 # Definimos un método de inserción personalizado de Pandas para insertar datos en la BD
 # evitando que se generen registros duplicados.
 # La función .to_sql le inyecta los parámetros al llamar a la función
@@ -119,7 +147,7 @@ async def health_check():
 # Endpoint para recibir datos del script de Ingesta (POST)
 
 @app.post("/api/ingest", status_code=201)
-async def ingest_air_data(data: list[AirQualityInbound]):
+async def ingest_air_data(data: list[AirQualityInbound], service: str = Depends(verify_api_key)):
     try:
         # 1. Convertimos la lista de modelos Pydantic a una lista de diccionarios Python
         # model_dump() es el estándar moderno de Pydantic v2
@@ -166,13 +194,13 @@ async def ingest_air_data(data: list[AirQualityInbound]):
 # --- ENDPOINTS DE ALERTAS ---
 
 @app.get("/api/alertas")
-async def get_alertas_pendientes():
+async def get_alertas_pendientes(service: str = Depends(verify_api_key)):
     """Devuelve alertas de contaminación pendientes de enviar a Telegram."""
     query = """
         SELECT a.*
         FROM marts.fct_alertas_actuales_contaminacion a
         WHERE NOT EXISTS (
-            SELECT 1 FROM raw.alertas_enviadas_telegram e
+            SELECT 1 FROM alerts.alertas_enviadas_telegram e
             WHERE e.id_estacion = a.id_estacion
             AND e.fecha_hora_alerta = a.fecha_hora_alerta
         )
@@ -185,12 +213,12 @@ async def get_alertas_pendientes():
 
 
 @app.post("/api/alertas/registrar-envio")
-async def registrar_alerta_enviada(alertas: list[dict]):
+async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(verify_api_key)):
     """Registra en el histórico las alertas enviadas a Telegram."""
     with engine.connect() as conn:
         for alerta in alertas:
             conn.execute(text("""
-                INSERT INTO raw.alertas_enviadas_telegram
+                INSERT INTO alerts.alertas_enviadas_telegram
                 (id_estacion, fecha_hora_alerta, nombre_estacion, ciudad, parametro, valor, limite)
                 VALUES (:id_estacion, :fecha_hora_alerta, :nombre_estacion, :ciudad, :parametro, :valor, :limite)
                 ON CONFLICT (id_estacion, fecha_hora_alerta, parametro) DO NOTHING

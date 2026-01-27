@@ -125,6 +125,8 @@ def init_db():
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS intermediate;"))
                 conn.execute(text("CREATE SCHEMA IF NOT EXISTS marts;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS alerts;"))
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS security;"))
 
                 # 2. Tabla para Valencia (datos en tiempo real de la API)
                 conn.execute(text("""
@@ -205,7 +207,7 @@ def init_db():
 
                 # 5. Tabla para registro de alertas enviadas a Telegram (histórico permanente)
                 conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS raw.alertas_enviadas_telegram (
+                    CREATE TABLE IF NOT EXISTS alerts.alertas_enviadas_telegram (
                         id SERIAL PRIMARY KEY,
                         fecha_envio TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                         id_estacion INTEGER NOT NULL,
@@ -219,7 +221,41 @@ def init_db():
                     );
                 """))
 
-                conn.commit() 
+                # 6. Tabla para autenticación M2M (Machine-to-Machine)
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS security.api_key_clients (
+                        id SERIAL PRIMARY KEY,
+                        service_name VARCHAR(100) UNIQUE NOT NULL,
+                        api_key VARCHAR(255) UNIQUE NOT NULL,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                    );
+                """))
+
+                # Índice para búsquedas rápidas por api_key
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS idx_api_key_clients_api_key
+                    ON security.api_key_clients(api_key);
+                """))
+
+                # 7. Insertar clientes API desde variables de entorno
+                api_clients = {
+                    "ingestion-valencia": os.getenv("INGESTION_VALENCIA_API_KEY"),
+                    "telegram-alerts": os.getenv("TELEGRAM_ALERTS_API_KEY"),
+                }
+
+                for service_name, api_key in api_clients.items():
+                    if api_key:
+                        conn.execute(text("""
+                            INSERT INTO security.api_key_clients (service_name, api_key)
+                            VALUES (:service_name, :api_key)
+                            ON CONFLICT (service_name) DO NOTHING
+                        """), {"service_name": service_name, "api_key": api_key})
+                        print(f"  🔑 Cliente API registrado: {service_name}")
+                    else:
+                        print(f"  ⚠️ API key no encontrada para: {service_name}")
+
+                conn.commit()
                 print("✅ Base de datos lista: Esquemas y tablas RAW creados correctamente.")
                 return 
 

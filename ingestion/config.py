@@ -24,6 +24,9 @@ CITIES_CONFIG = {
 # La URL del endpoint de ingestion de la api backend
 BARRIER_API_URL = os.getenv("BARRIER_API_URL")
 
+# API Key para autenticación M2M
+API_KEY = os.getenv("INGESTION_VALENCIA_API_KEY")
+
 # 2. Configuración Global de Ingesta
 RETRY_ATTEMPTS = 3
 TIMEOUT_SECONDS = 10

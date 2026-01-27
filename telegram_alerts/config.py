@@ -4,6 +4,7 @@ import os
 BOT_TOKEN = os.getenv("BOT_TELEGRAM_TOKEN")
 CANAL_ID = os.getenv("ID_CANAL_TELEGRAM")
 BARRIER_API_URL = os.getenv("BARRIER_API_URL")
+API_KEY = os.getenv("TELEGRAM_ALERTS_API_KEY")
 CHECK_INTERVAL = 300  # 5 minutos
 
 PARAMETROS = [
