@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, Query
 from fastapi.security import APIKeyHeader
 from config import engine
 import pandas as pd

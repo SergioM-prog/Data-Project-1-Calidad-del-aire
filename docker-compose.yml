@@ -26,9 +26,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy  # Espera a que el backend pase el healthcheck
-
-# 3. TRANSFORMACIONES DBT (Transformaciones de datos - Cada 5 minutos)
-
+  
+  # 3. TRANSFORMACIONES DBT (Transformaciones de datos - Cada 5 minutos)
   dbt:
     image: ghcr.io/dbt-labs/dbt-postgres:1.8.2
 
@@ -43,7 +42,7 @@ services:
       - ./dbt/air_quality_dbt:/usr/app/air_quality_dbt
     working_dir: /usr/app/air_quality_dbt
     env_file: .env
-    platform: linux/amd64
+    # platform: linux/amd64
     depends_on:
       - db
 
