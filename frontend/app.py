@@ -166,7 +166,7 @@ def severity_style(nivel: int):
 
 def fetch_alert_now(station_id: int):
     r = requests.get(
-        f"{API_URL}/api/v1/alerts/now",
+        f"{API_URL}/api/alerts/now",
         params={"station_id": int(station_id)},
         timeout=10
     )
@@ -177,7 +177,7 @@ def fetch_alert_now(station_id: int):
 
 #tarjeta ranking estaciones con menor contaminación
 def menos_contaminacion(limit: int = 3) -> dict:
-    r = requests.get(f"{API_URL}/api/v1/zonas-verdes", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{API_URL}/api/zonas-verdes", params={"limit": limit}, timeout=20)
     r.raise_for_status()
     return r.json()
 
@@ -219,14 +219,14 @@ def choose_zoom(window: str) -> float:
 
 
 def fetch_hourly(limit=5000) -> pd.DataFrame:
-    r = requests.get(f"{API_URL}/api/v1/hourly-metrics", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{API_URL}/api/hourly-metrics", params={"limit": limit}, timeout=20)
     r.raise_for_status()
     return pd.DataFrame(r.json())
 
 
 def fetch_history(station_id: int, days: int, metric: str) -> pd.DataFrame:
     r = requests.get(
-        f"{API_URL}/api/v1/history/hourly",
+        f"{API_URL}/api/history/hourly",
         params={"station_id": station_id, "days": days, "metric": metric},
         timeout=20
     )
@@ -234,7 +234,7 @@ def fetch_history(station_id: int, days: int, metric: str) -> pd.DataFrame:
     return pd.DataFrame(r.json())
 
 def fetch_station_latest_hourly(station_id: int) -> dict:
-    url = f"{API_URL}/api/v1/station/latest-hourly"
+    url = f"{API_URL}/api/station/latest-hourly"
     r = requests.get(url, params={"station_id": station_id}, timeout=10)
     r.raise_for_status()
     return r.json()
@@ -362,7 +362,7 @@ app.layout = html.Div(
 )
 def load_stations(_):
     try:
-        r = requests.get(f"{API_URL}/api/v1/stations", timeout=10)
+        r = requests.get(f"{API_URL}/api/stations", timeout=10)
         r.raise_for_status()
         stations = r.json()
 
@@ -497,7 +497,7 @@ def render_banner(station_id):
 
     try:
         r = requests.get(
-            f"{API_URL}/api/v1/alerts/now",
+            f"{API_URL}/api/alerts/now",
             params={"station_id": int(station_id)},
             timeout=15
         )

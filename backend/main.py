@@ -214,6 +214,7 @@ async def get_alertas_pendientes(service: str = Depends(verify_api_key)):
 
 @app.post("/api/alertas/registrar-envio")
 async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(verify_api_key)):
+
     """Registra en el histórico las alertas enviadas a Telegram."""
     with engine.connect() as conn:
         for alerta in alertas:
@@ -225,3 +226,141 @@ async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(v
             """), alerta)
         conn.commit()
     return {"status": "success", "alertas_registradas": len(alertas)}
+
+
+@app.get("/api/hourly-metrics")
+def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000)):
+    """
+    Devuelve las últimas métricas horarias (JSON seguro: sin NaN/Inf).
+    """
+    try:
+        query = f"""
+            SELECT *
+            FROM marts.fct_air_quality_hourly
+            ORDER BY measure_hour DESC
+            LIMIT {limit}
+        """
+        df = pd.read_sql(query, engine)
+
+        # ✅ Convertir NaN/Inf a None para que JSON no rompa
+        records = df.to_dict(orient="records")
+        for row in records:
+            for k, v in row.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    row[k] = None
+
+        return records
+
+    except Exception as e:
+        print(f"Error en API: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
+
+
+#Podio
+@app.get("/api/zonas-verdes")
+def get_zonas_verdes(limit: int = Query(3, ge=1, le=10)):
+
+    """
+    Devuelve las estaciones con mejor calidad del aire (menor contaminación).
+    Solo incluye estaciones donde NINGÚN contaminante supere su umbral.
+    Umbrales: NO2=25, PM2.5=15, PM10=45, O3=100, SO2=40 µg/m³
+    """
+    try:
+        query = """
+            WITH ultimas_mediciones AS (
+                SELECT DISTINCT ON (station_id)
+                    station_id,
+                    station_name,
+                    avg_no2,
+                    avg_pm25,
+                    avg_pm10,
+                    avg_o3,
+                    avg_so2,
+                    measure_hour
+                FROM marts.fct_air_quality_hourly
+                ORDER BY station_id, measure_hour DESC
+            ),
+            sin_alertas AS (
+                SELECT
+                    station_id,
+                    station_name,
+                    measure_hour,
+                    avg_no2,
+                    avg_pm25,
+                    avg_pm10,
+                    avg_o3,
+                    avg_so2,
+                    COALESCE(avg_no2, 0) + COALESCE(avg_pm25, 0) + COALESCE(avg_pm10, 0) +
+                    COALESCE(avg_o3, 0) + COALESCE(avg_so2, 0) AS indice_contaminacion
+                FROM ultimas_mediciones
+                WHERE station_name IS NOT NULL
+                  AND (avg_no2 IS NULL OR avg_no2 <= 25)
+                  AND (avg_pm25 IS NULL OR avg_pm25 <= 15)
+                  AND (avg_pm10 IS NULL OR avg_pm10 <= 45)
+                  AND (avg_o3 IS NULL OR avg_o3 <= 100)
+                  AND (avg_so2 IS NULL OR avg_so2 <= 40)
+            )
+            SELECT
+                station_id,
+                station_name,
+                avg_no2,
+                avg_pm25,
+                avg_pm10,
+                avg_o3,
+                avg_so2,
+                indice_contaminacion,
+                ROW_NUMBER() OVER (ORDER BY indice_contaminacion ASC) as ranking_pos
+            FROM sin_alertas
+            ORDER BY indice_contaminacion ASC
+            LIMIT %(limit)s
+        """
+        df = pd.read_sql(query, engine, params={"limit": limit})
+
+        if df.empty:
+            return []
+
+        records = df.to_dict(orient="records")
+        for row in records:
+            for k, v in row.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    row[k] = None
+
+        return records
+
+    except Exception as e:
+        print(f"Error en zonas-verdes: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener zonas verdes")
+
+
+
+
+@app.get("/api/station/latest-hourly")
+def get_station_latest_hourly(station_id: int = Query(..., ge=1)):
+    """
+    Devuelve la fila más reciente (última hora) de marts.fct_air_quality_hourly para una estación.
+    """
+    try:
+        query = """
+            SELECT *
+            FROM marts.fct_air_quality_hourly
+            WHERE station_id = %(station_id)s
+            ORDER BY measure_hour DESC
+            LIMIT 1
+        """
+        df = pd.read_sql(query, engine, params={"station_id": station_id})
+
+        if df.empty:
+            return {}
+
+        record = df.to_dict(orient="records")[0]
+
+        # JSON seguro
+        for k, v in list(record.items()):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                record[k] = None
+
+        return record
+
+    except Exception as e:
+        print(f"Error latest-hourly: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
