@@ -242,6 +242,7 @@ def init_db():
                 api_clients = {
                     "ingestion-valencia": os.getenv("INGESTION_VALENCIA_API_KEY"),
                     "telegram-alerts": os.getenv("TELEGRAM_ALERTS_API_KEY"),
+                    "frontend": os.getenv("FRONTEND_API_KEY"),
                 }
 
                 for service_name, api_key in api_clients.items():

@@ -135,7 +135,7 @@ async def health_check():
         raise HTTPException(status_code=503, detail=f"Database unavailable: {e}")
 
 
-# Endpoint para recibir datos del script de Ingesta (POST)
+# --- ENDPOINTS INGESTA ---
 
 @app.post("/api/ingest", status_code=201)
 async def ingest_air_data(data: list[AirQualityInbound], service: str = Depends(verify_api_key)):
@@ -182,7 +182,7 @@ async def ingest_air_data(data: list[AirQualityInbound], service: str = Depends(
 
 
 
-# --- ENDPOINTS DE ALERTAS ---
+# --- ENDPOINTS DE ALERTAS TELEGRAM ---
 
 @app.get("/api/alertas")
 async def get_alertas_pendientes(service: str = Depends(verify_api_key)):
@@ -218,6 +218,7 @@ async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(v
         conn.commit()
     return {"status": "success", "alertas_registradas": len(alertas)}
 
+# --- ENDPOINTS PLOTLI ---
 
 @app.get("/api/hourly-metrics")
 def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000), service: str = Depends(verify_api_key)):
@@ -228,7 +229,7 @@ def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000), service: str = De
         query = f"""
             SELECT *
             FROM marts.fct_air_quality_hourly
-            ORDER BY measure_hour DESC
+            ORDER BY fecha_hora DESC
             LIMIT {limit}
         """
         df = pd.read_sql(query, engine)
@@ -259,46 +260,46 @@ def get_zonas_verdes(limit: int = Query(3, ge=1, le=10), service: str = Depends(
     try:
         query = """
             WITH ultimas_mediciones AS (
-                SELECT DISTINCT ON (station_id)
-                    station_id,
-                    station_name,
-                    avg_no2,
-                    avg_pm25,
-                    avg_pm10,
-                    avg_o3,
-                    avg_so2,
-                    measure_hour
+                SELECT DISTINCT ON (id_estacion)
+                    id_estacion,
+                    nombre_estacion,
+                    promedio_no2,
+                    promedio_pm25,
+                    promedio_pm10,
+                    promedio_ozono,
+                    promedio_so2,
+                    fecha_hora
                 FROM marts.fct_air_quality_hourly
-                ORDER BY station_id, measure_hour DESC
+                ORDER BY id_estacion, fecha_hora DESC
             ),
             sin_alertas AS (
                 SELECT
-                    station_id,
-                    station_name,
-                    measure_hour,
-                    avg_no2,
-                    avg_pm25,
-                    avg_pm10,
-                    avg_o3,
-                    avg_so2,
-                    COALESCE(avg_no2, 0) + COALESCE(avg_pm25, 0) + COALESCE(avg_pm10, 0) +
-                    COALESCE(avg_o3, 0) + COALESCE(avg_so2, 0) AS indice_contaminacion
+                    id_estacion,
+                    nombre_estacion,
+                    fecha_hora,
+                    promedio_no2,
+                    promedio_pm25,
+                    promedio_pm10,
+                    promedio_ozono,
+                    promedio_so2,
+                    COALESCE(promedio_no2, 0) + COALESCE(promedio_pm25, 0) + COALESCE(promedio_pm10, 0) +
+                    COALESCE(promedio_ozono, 0) + COALESCE(promedio_so2, 0) AS indice_contaminacion
                 FROM ultimas_mediciones
-                WHERE station_name IS NOT NULL
-                  AND (avg_no2 IS NULL OR avg_no2 <= 25)
-                  AND (avg_pm25 IS NULL OR avg_pm25 <= 15)
-                  AND (avg_pm10 IS NULL OR avg_pm10 <= 45)
-                  AND (avg_o3 IS NULL OR avg_o3 <= 100)
-                  AND (avg_so2 IS NULL OR avg_so2 <= 40)
+                WHERE nombre_estacion IS NOT NULL
+                  AND (promedio_no2 IS NULL OR promedio_no2 <= 25)
+                  AND (promedio_pm25 IS NULL OR promedio_pm25 <= 15)
+                  AND (promedio_pm10 IS NULL OR promedio_pm10 <= 45)
+                  AND (promedio_ozono IS NULL OR promedio_ozono <= 100)
+                  AND (promedio_so2 IS NULL OR promedio_so2 <= 40)
             )
             SELECT
-                station_id,
-                station_name,
-                avg_no2,
-                avg_pm25,
-                avg_pm10,
-                avg_o3,
-                avg_so2,
+                id_estacion,
+                nombre_estacion,
+                promedio_no2,
+                promedio_pm25,
+                promedio_pm10,
+                promedio_ozono,
+                promedio_so2,
                 indice_contaminacion,
                 ROW_NUMBER() OVER (ORDER BY indice_contaminacion ASC) as ranking_pos
             FROM sin_alertas
@@ -334,8 +335,8 @@ def get_station_latest_hourly(station_id: int = Query(..., ge=1), service: str =
         query = """
             SELECT *
             FROM marts.fct_air_quality_hourly
-            WHERE station_id = %(station_id)s
-            ORDER BY measure_hour DESC
+            WHERE id_estacion = %(station_id)s
+            ORDER BY fecha_hora DESC
             LIMIT 1
         """
         df = pd.read_sql(query, engine, params={"station_id": station_id})
@@ -355,3 +356,133 @@ def get_station_latest_hourly(station_id: int = Query(..., ge=1), service: str =
     except Exception as e:
         print(f"Error latest-hourly: {e}")
         raise HTTPException(status_code=500, detail="Error interno al leer base de datos")
+    
+@app.get("/api/alerts/now")
+def get_alert_now(station_id: int = Query(..., ge=1),service: str = Depends(verify_api_key)):
+    """
+    Devuelve el semáforo + recomendación actual para una estación,
+    leyendo desde marts.fct_alertas_actuales_contaminacion.
+    """
+    try:
+        q = text("""
+            WITH alertas_con_severidad AS (
+                SELECT
+                    fecha_hora_alerta,
+                    id_estacion,
+                    nombre_estacion,
+                    ciudad,
+                    CASE
+                        WHEN alerta_no2 THEN 'NO2'
+                        WHEN alerta_pm25 THEN 'PM2.5'
+                        WHEN alerta_pm10 THEN 'PM10'
+                        WHEN alerta_so2 THEN 'SO2'
+                        WHEN alerta_o3 THEN 'O3'
+                        WHEN alerta_co THEN 'CO'
+                        ELSE 'Desconocido'
+                    END as contaminante_principal,
+                    CASE
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 3 THEN 3
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 2 THEN 2
+                        ELSE 1
+                    END as nivel_severidad,
+                    CASE
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 3
+                        THEN 'Alerta Grave - Múltiples contaminantes exceden límites'
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 2
+                        THEN 'Alerta Moderada - Varios contaminantes elevados'
+                        ELSE 'Alerta Leve - Contaminante elevado'
+                    END as descripcion_severidad,
+                    CASE
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 3
+                        THEN 'Evite actividades al aire libre. Permanezca en interiores con ventanas cerradas.'
+                        WHEN (alerta_no2::int + alerta_pm25::int + alerta_pm10::int +
+                              alerta_so2::int + alerta_o3::int + alerta_co::int) >= 2
+                        THEN 'Reduzca actividades físicas intensas al aire libre. Use mascarilla si es necesario.'
+                        ELSE 'Limite actividades físicas prolongadas al aire libre.'
+                    END as recomendacion
+                FROM marts.fct_alertas_actuales_contaminacion
+                WHERE id_estacion = :station_id
+            )
+            SELECT
+                fecha_hora_alerta,
+                id_estacion,
+                nombre_estacion,
+                nivel_severidad,
+                contaminante_principal,
+                descripcion_severidad,
+                recomendacion
+            FROM alertas_con_severidad
+            ORDER BY fecha_hora_alerta DESC
+            LIMIT 1;
+        """)
+
+        with engine.connect() as conn:
+            row = conn.execute(q, {"station_id": station_id}).mappings().first()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="No hay alerta disponible para esa estación.")
+
+        # devolvemos dict JSON-friendly
+        return dict(row)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error en API alerts/now: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al leer alerts/now")
+
+@app.get("/air_quality/history")
+def air_quality_history(station_id: int, window: str = "now", service: str = Depends(verify_api_key)):
+    rows = []
+
+    # --- tu lógica actual de histórico ---
+    rows.append({
+        "timestamp": "2026-01-26T10:00:00",
+        "nivel_severidad": 3,
+    })
+
+    # Obtener coordenadas desde la tabla marts.fct_dim_estaciones
+    try:
+        query = """
+            SELECT latitud, longitud
+            FROM marts.fct_dim_estaciones
+            WHERE id_estacion = %(station_id)s
+            LIMIT 1
+        """
+        df = pd.read_sql(query, engine, params={"station_id": station_id})
+
+        if not df.empty:
+            lat = df.iloc[0]['latitud']
+            lon = df.iloc[0]['longitud']
+
+            for r in rows:
+                r["lat"] = lat
+                r["lon"] = lon
+    except Exception as e:
+        print(f"Error al obtener coordenadas: {e}")
+
+    return rows
+
+@app.get("/api/stations")
+def get_stations(service: str = Depends(verify_api_key)):
+    """
+    Devuelve la lista de estaciones únicas con su ID y nombre.
+    """
+    try:
+        query = """
+            SELECT DISTINCT id_estacion, nombre_estacion
+            FROM marts.fct_air_quality_hourly
+            WHERE nombre_estacion IS NOT NULL
+            ORDER BY nombre_estacion
+        """
+        df = pd.read_sql(query, engine)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error en stations: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener estaciones")
+

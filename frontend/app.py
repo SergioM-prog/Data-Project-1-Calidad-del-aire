@@ -370,7 +370,7 @@ def load_stations(_):
         stations = r.json()
 
         options = [
-            {"label": s["station_name"], "value": s["station_id"]}
+            {"label": s["nombre_estacion"], "value": s["id_estacion"]}
             for s in stations
         ]
 
@@ -409,17 +409,17 @@ def load_zonas_verdes(_):
 
         def crear_tooltip(zona):
             """Crea el texto del tooltip con los niveles de contaminantes"""
-            lineas = [f"📍 {zona.get('station_name', 'Estación')}"]
+            lineas = [f"📍 {zona.get('nombre_estacion', 'Estación')}"]
             lineas.append("─" * 20)
-            lineas.append(f"NO₂:   {formato_valor(zona.get('avg_no2'))} µg/m³")
-            lineas.append(f"PM2.5: {formato_valor(zona.get('avg_pm25'))} µg/m³")
-            lineas.append(f"PM10:  {formato_valor(zona.get('avg_pm10'))} µg/m³")
-            lineas.append(f"O₃:    {formato_valor(zona.get('avg_o3'))} µg/m³")
-            lineas.append(f"SO₂:   {formato_valor(zona.get('avg_so2'))} µg/m³")
+            lineas.append(f"NO₂:   {formato_valor(zona.get('promedio_no2'))} µg/m³")
+            lineas.append(f"PM2.5: {formato_valor(zona.get('promedio_pm25'))} µg/m³")
+            lineas.append(f"PM10:  {formato_valor(zona.get('promedio_pm10'))} µg/m³")
+            lineas.append(f"O₃:    {formato_valor(zona.get('promedio_ozono'))} µg/m³")
+            lineas.append(f"SO₂:   {formato_valor(zona.get('promedio_so2'))} µg/m³")
             return "\n".join(lineas)
 
         def crear_podio_card(posicion, zona):
-            nombre = zona.get("station_name", "Estación desconocida")
+            nombre = zona.get("nombre_estacion", "Estación desconocida")
             config = podio_config[posicion]
             tooltip_text = crear_tooltip(zona)
 
@@ -581,15 +581,15 @@ def update_pollutants_bar(station_id):
     if not data:
         return empty_fig(), "No hay datos disponibles para esta estación."
 
-    station_name = data.get("station_name", f"Estación {station_id}")
-    measure_hour = data.get("measure_hour", "")
+    station_name = data.get("nombre_estacion", f"Estación {station_id}")
+    measure_hour = data.get("fecha_hora", "")
 
     pollutants = [
-        ("PM2.5", data.get("avg_pm25")),
-        ("PM10",  data.get("avg_pm10")),
-        ("NO2",   data.get("avg_no2")),
-        ("O3",    data.get("avg_o3")),
-        ("SO2",   data.get("avg_so2")),
+        ("PM2.5", data.get("promedio_pm25")),
+        ("PM10",  data.get("promedio_pm10")),
+        ("NO2",   data.get("promedio_no2")),
+        ("O3",    data.get("promedio_ozono")),
+        ("SO2",   data.get("promedio_so2")),
     ]
 
     # Creamos DF y SOLO quitamos filas sin valor actual

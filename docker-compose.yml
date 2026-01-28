@@ -60,21 +60,21 @@ services:
 
   # 5. DASHBOARD GRAFANA
 
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin # Contraseña inicial
-    env_file: .env
-    volumes:
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - db
-    restart: unless-stopped
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin # Contraseña inicial
+  #   env_file: .env
+  #   volumes:
+  #     - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+  #     - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+  #     - ./grafana/dashboards:/var/lib/grafana/dashboards
+  #     - grafana_data:/var/lib/grafana
+  #   depends_on:
+  #     - db
+  #   restart: unless-stopped
 
   # 6. BACKEND API (Servidor que lee datos - Puerto 8000)
   backend:
@@ -102,9 +102,7 @@ services:
     container_name: air-quality-frontend
     ports:
       - "8050:8050" # Acceso: http://localhost:8050
-    environment:
-      # IMPORTANTE: Aquí usamos el nombre del servicio 'backend' dentro de la red Docker
-      - API_URL=http://backend:8000
+    env_file: .env
     depends_on:
       - backend
     restart: unless-stopped
