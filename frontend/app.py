@@ -215,7 +215,7 @@ def severity_fill(nivel):
 
 #zoom mapa
 def choose_zoom(window: str) -> float:
-    return {"Ahora": 15.5, "8h": 15.0, "24h": 14.5, "7d": 14.0}.get(window, 14.5)
+    return {"Ahora": 12.5, "8h": 12.5, "24h": 12.5, "7d": 12.5}.get(window, 12.5)
 
 
 
@@ -712,7 +712,7 @@ def update_map(station_id, window):
     fig = go.Figure()
 
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=poly_lat,
             lon=poly_lon,
             fill="toself",
@@ -723,7 +723,7 @@ def update_map(station_id, window):
     )
 
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=[lat],
             lon=[lon],
             mode="markers",
@@ -734,9 +734,9 @@ def update_map(station_id, window):
     )
 
     fig.update_layout(
-        mapbox_style="open-street-map",
-        mapbox_center={"lat": lat, "lon": lon},
-        mapbox_zoom=choose_zoom(window),
+        map_style="open-street-map",
+        map_center={"lat": lat, "lon": lon},
+        map_zoom=choose_zoom(window),
         margin=dict(l=0, r=0, t=30, b=0),
         title=f"Estación {station_id} | Ventana: {window}",
         showlegend=False,
