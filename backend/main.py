@@ -8,19 +8,10 @@ from sqlalchemy import types, text
 from contextlib import asynccontextmanager
 from database import init_db, load_historical_real_data, load_historical_simulated_data
 from sqlalchemy.dialects.postgresql import insert
+import math
 
 
 # ----------------------------------
-
-# # Modelos para objetos anidados del JSON. Así comprobamos que los valores dentro del diccionario son lo que deberían ser
-# class GeoPoint(BaseModel):
-#     lon: float
-#     lat: float
-
-# class GeoShape(BaseModel):
-#     type: str
-#     geometry: Dict[str, Any]
-#     properties: Dict[str, Any]
 
 # Clase principal de la medición
 class AirQualityInbound(BaseModel):
@@ -229,7 +220,7 @@ async def registrar_alerta_enviada(alertas: list[dict], service: str = Depends(v
 
 
 @app.get("/api/hourly-metrics")
-def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000)):
+def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000), service: str = Depends(verify_api_key)):
     """
     Devuelve las últimas métricas horarias (JSON seguro: sin NaN/Inf).
     """
@@ -258,7 +249,7 @@ def get_hourly_metrics(limit: int = Query(100, ge=1, le=5000)):
 
 #Podio
 @app.get("/api/zonas-verdes")
-def get_zonas_verdes(limit: int = Query(3, ge=1, le=10)):
+def get_zonas_verdes(limit: int = Query(3, ge=1, le=10), service: str = Depends(verify_api_key)):
 
     """
     Devuelve las estaciones con mejor calidad del aire (menor contaminación).
@@ -335,7 +326,7 @@ def get_zonas_verdes(limit: int = Query(3, ge=1, le=10)):
 
 
 @app.get("/api/station/latest-hourly")
-def get_station_latest_hourly(station_id: int = Query(..., ge=1)):
+def get_station_latest_hourly(station_id: int = Query(..., ge=1), service: str = Depends(verify_api_key)):
     """
     Devuelve la fila más reciente (última hora) de marts.fct_air_quality_hourly para una estación.
     """
