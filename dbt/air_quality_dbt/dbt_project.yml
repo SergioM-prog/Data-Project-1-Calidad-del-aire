@@ -27,7 +27,7 @@ models:
   air_quality_dbt:
     # Materialize staging models as views, intermediate and marts as tables
     staging:
-      +materialized: view
+      # view es el default, no hace falta especificarlo
       +tags: ["staging"]
       +schema: staging
     intermediate:

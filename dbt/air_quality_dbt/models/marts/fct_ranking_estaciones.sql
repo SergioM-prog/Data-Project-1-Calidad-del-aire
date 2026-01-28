@@ -1,88 +1,68 @@
--- TABLA: Ranking de Estaciones por Contaminación
--- 
--- ¿Qué hace esta tabla?
--- Calcula el PROMEDIO de cada contaminante por estación
--- en los últimos 30 días y las ORDENA (ranking)
---
--- ¿Para qué sirve?
--- Para gráficas de:
--- - Top 10 estaciones con peor calidad de aire
--- - Comparar estaciones entre sí
--- - Identificar zonas problemáticas de la ciudad
---
--- Se actualiza cada vez que corre dbt (cada 5 minutos)
+with
 
-{{ config(materialized='table') }}
+source as (
 
-WITH estadisticas_estacion AS (
-    -- Subconsulta: Calculamos promedios de los últimos 30 días
-    SELECT 
-        station_id AS id_estacion,
-        station_name AS nombre_estacion,
-        
-        -- Promedios de cada contaminante (redondeados a 2 decimales)
-        ROUND(AVG(pm25)::numeric, 2) AS promedio_pm25,
-        ROUND(AVG(pm10)::numeric, 2) AS promedio_pm10,
-        ROUND(AVG(no2)::numeric, 2) AS promedio_no2,
-        ROUND(AVG(so2)::numeric, 2) AS promedio_so2,
-        ROUND(AVG(o3)::numeric, 2) AS promedio_ozono,
-        ROUND(AVG(co)::numeric, 2) AS promedio_co,
-        
-        -- Máximos registrados (picos de contaminación)
-        ROUND(MAX(pm25)::numeric, 2) AS maximo_pm25,
-        ROUND(MAX(pm10)::numeric, 2) AS maximo_pm10,
-        ROUND(MAX(no2)::numeric, 2) AS maximo_no2,
-        
-        -- Contamos cuántas mediciones tiene cada estación
-        COUNT(*) AS total_mediciones
-        
-    FROM {{ ref('stg_valencia_air') }}
-    
-    -- Solo últimos 30 días
-    WHERE measure_timestamp >= CURRENT_DATE - INTERVAL '30 days'
-    
-    GROUP BY station_id, station_name
+    select * from {{ ref('stg_valencia_air') }}
+    where fecha_hora_medicion >= current_date - interval '30 days'
+
+),
+
+estadisticas_estacion as (
+
+    select
+        id_estacion,
+        nombre_estacion,
+        'Valencia' as ciudad,
+        round(avg(pm25)::numeric, 2)::float as promedio_pm25,
+        round(avg(pm10)::numeric, 2)::float as promedio_pm10,
+        round(avg(no2)::numeric, 2)::float as promedio_no2,
+        round(avg(so2)::numeric, 2)::float as promedio_so2,
+        round(avg(o3)::numeric, 2)::float as promedio_ozono,
+        round(avg(co)::numeric, 2)::float as promedio_co,
+        round(max(pm25)::numeric, 2)::float as maximo_pm25,
+        round(max(pm10)::numeric, 2)::float as maximo_pm10,
+        round(max(no2)::numeric, 2)::float as maximo_no2,
+        count(*) as total_mediciones
+    from source
+    group by id_estacion, nombre_estacion, ciudad
+
+),
+
+ranked as (
+
+    select
+        *,
+        rank() over (order by promedio_pm25 desc) as ranking_pm25,
+        rank() over (order by promedio_pm10 desc) as ranking_pm10,
+        rank() over (order by promedio_no2 desc) as ranking_no2,
+        rank() over (order by promedio_so2 desc) as ranking_so2,
+        rank() over (order by promedio_ozono desc) as ranking_ozono,
+        round((
+            rank() over (order by promedio_pm25 desc) +
+            rank() over (order by promedio_pm10 desc) +
+            rank() over (order by promedio_no2 desc)
+        )::numeric / 3.0, 1)::float as ranking_general,
+        case
+            when round((
+                rank() over (order by promedio_pm25 desc) +
+                rank() over (order by promedio_pm10 desc) +
+                rank() over (order by promedio_no2 desc)
+            )::numeric / 3.0, 1) <= 3 then 'Zona Muy Contaminada'
+            when round((
+                rank() over (order by promedio_pm25 desc) +
+                rank() over (order by promedio_pm10 desc) +
+                rank() over (order by promedio_no2 desc)
+            )::numeric / 3.0, 1) <= 7 then 'Zona Contaminada'
+            when round((
+                rank() over (order by promedio_pm25 desc) +
+                rank() over (order by promedio_pm10 desc) +
+                rank() over (order by promedio_no2 desc)
+            )::numeric / 3.0, 1) <= 12 then 'Zona Moderada'
+            else 'Zona Limpia'
+        end as clasificacion_zona
+    from estadisticas_estacion
+
 )
 
-SELECT 
-    *,
-    
-    -- Rankings individuales (1 = la más contaminada, 20 = la menos contaminada)
-    RANK() OVER (ORDER BY promedio_pm25 DESC) AS ranking_pm25,
-    RANK() OVER (ORDER BY promedio_pm10 DESC) AS ranking_pm10,
-    RANK() OVER (ORDER BY promedio_no2 DESC) AS ranking_no2,
-    RANK() OVER (ORDER BY promedio_so2 DESC) AS ranking_so2,
-    RANK() OVER (ORDER BY promedio_ozono DESC) AS ranking_ozono,
-    
-    -- Índice compuesto de contaminación general
-    -- (promedio de los 3 rankings principales dividido por 3)
-    ROUND((
-        RANK() OVER (ORDER BY promedio_pm25 DESC) + 
-        RANK() OVER (ORDER BY promedio_pm10 DESC) + 
-        RANK() OVER (ORDER BY promedio_no2 DESC)
-    )::numeric / 3.0, 1) AS ranking_general,
-    
-    -- Clasificación textual según ranking general
-    CASE
-        WHEN ROUND((
-            RANK() OVER (ORDER BY promedio_pm25 DESC) + 
-            RANK() OVER (ORDER BY promedio_pm10 DESC) + 
-            RANK() OVER (ORDER BY promedio_no2 DESC)
-        )::numeric / 3.0, 1) <= 3 THEN 'Zona Muy Contaminada'
-        WHEN ROUND((
-            RANK() OVER (ORDER BY promedio_pm25 DESC) + 
-            RANK() OVER (ORDER BY promedio_pm10 DESC) + 
-            RANK() OVER (ORDER BY promedio_no2 DESC)
-        )::numeric / 3.0, 1) <= 7 THEN 'Zona Contaminada'
-        WHEN ROUND((
-            RANK() OVER (ORDER BY promedio_pm25 DESC) + 
-            RANK() OVER (ORDER BY promedio_pm10 DESC) + 
-            RANK() OVER (ORDER BY promedio_no2 DESC)
-        )::numeric / 3.0, 1) <= 12 THEN 'Zona Moderada'
-        ELSE 'Zona Limpia'
-    END AS clasificacion_zona
-
-FROM estadisticas_estacion
-
--- Ordenamos por el promedio de PM2.5 (el más peligroso para la salud)
-ORDER BY promedio_pm25 DESC
+select * from ranked
+order by promedio_pm25 desc

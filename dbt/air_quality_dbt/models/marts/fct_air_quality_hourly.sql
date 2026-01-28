@@ -1,17 +1,30 @@
--- Agrupamos por hora, ciudad y estación para ver la evolución intradía
-SELECT
-    date_trunc('hour', measure_timestamp) AS measure_hour,
-    city,
-    station_id,
-    station_name,
-    ROUND(AVG(no2)::numeric, 2) AS avg_no2,
-    ROUND(AVG(pm10)::numeric, 2) AS avg_pm10,
-    ROUND(AVG(pm25)::numeric, 2) AS avg_pm25,
-    ROUND(AVG(so2)::numeric, 2) AS avg_so2,
-    ROUND(AVG(o3)::numeric, 2) AS avg_o3,
-    ROUND(AVG(co)::numeric, 2) AS avg_co,
-    COUNT(*) AS records_count -- Útil para saber si hay datos faltantes en esa hora
-FROM {{ ref('int_air_quality_union') }}
-WHERE measure_timestamp IS NOT NULL -- Filtramos los placeholders de Madrid
-GROUP BY 1, 2, 3, 4
-ORDER BY 1 DESC, 2
+with
+
+source as (
+
+    select * from {{ ref('int_air_quality_union_hourly') }}
+    where fecha_hora_medicion is not null
+
+),
+
+hourly_aggregates as (
+
+    select
+        date_trunc('hour', fecha_hora_medicion) as fecha_hora,
+        ciudad,
+        id_estacion,
+        nombre_estacion,
+        round(avg(no2)::numeric, 2)::float as promedio_no2,
+        round(avg(pm10)::numeric, 2)::float as promedio_pm10,
+        round(avg(pm25)::numeric, 2)::float as promedio_pm25,
+        round(avg(so2)::numeric, 2)::float as promedio_so2,
+        round(avg(o3)::numeric, 2)::float as promedio_ozono,
+        round(avg(co)::numeric, 2)::float as promedio_co,
+        count(*) as total_mediciones_hora
+    from source
+    group by 1, 2, 3, 4
+
+)
+
+select * from hourly_aggregates
+order by fecha_hora desc, ciudad

@@ -6,14 +6,16 @@
 
 ## RESUMEN EJECUTIVO
 
-**Última actualización**: 20 de enero de 2026
+**Última actualización**: 22 de enero de 2026
 
 ### Arquitectura Actual
 
-El proyecto implementa un pipeline de datos de calidad del aire con **arquitectura de API de barrera**:
+El proyecto implementa un pipeline de datos de calidad del aire **completo y operativo** con arquitectura Medallion:
 
 ```
-API Valencia → Script Python → Backend FastAPI → PostgreSQL
+API Valencia → Script Python → Backend FastAPI → PostgreSQL → dbt → Grafana
+     ↑                              ↑
+Datos Históricos (CSV)        Carga automática al inicio
 ```
 
 ### Servicios Activos
@@ -21,10 +23,10 @@ API Valencia → Script Python → Backend FastAPI → PostgreSQL
 | Servicio | Estado | Puerto | Descripción |
 |----------|--------|--------|-------------|
 | PostgreSQL | ✅ Activo | 5431 | Base de datos principal |
-| Backend API | ✅ Activo | 8000 | API de validación e ingesta (FastAPI) |
-| Ingestion Script | ✅ Activo | - | Script de extracción (ejecuta 1 vez) |
-| dbt | ❌ Inactivo | - | Transformaciones SQL (comentado) |
-| Grafana | ❌ Inactivo | 3000 | Visualización (comentado) |
+| Backend API | ✅ Activo | 8000 | API de validación e ingesta (FastAPI) + carga histórica |
+| Ingestion Script | ✅ Activo | - | Script de extracción (ejecuta cada 5 minutos) |
+| dbt | ✅ Activo | - | Transformaciones SQL (ejecuta cada 5 minutos) |
+| Grafana | ✅ Activo | 3000 | Visualización y dashboards |
 | Frontend | ❌ Inactivo | 8050 | Dashboard Dash (comentado) |
 
 ### Tecnologías Principales
@@ -33,6 +35,8 @@ API Valencia → Script Python → Backend FastAPI → PostgreSQL
 - **Backend**: FastAPI + Pydantic + SQLAlchemy + pandas
 - **Base de datos**: PostgreSQL 17-alpine
 - **Ingesta**: Python 3.11-slim + requests
+- **Transformación**: dbt 1.8.2 (arquitectura Medallion)
+- **Visualización**: Grafana (dashboards en tiempo real)
 - **Validación**: Pydantic (tipado fuerte, validación automática)
 
 ### Comandos Rápidos
@@ -61,16 +65,25 @@ docker-compose down -v
 ### Accesos Principales
 
 - **Swagger UI (API Docs)**: http://localhost:8000/docs
+- **Grafana Dashboards**: http://localhost:3000 (admin/admin)
 - **PostgreSQL**: localhost:5431
 - **Backend API Endpoint**: http://localhost:8000/api/ingest
 
 ### Datos Almacenados
 
-- **Tabla**: `raw.valencia_air`
-- **Estructura**: 19 columnas estructuradas (no JSONB genérico)
+- **Tablas Raw**:
+  - `raw.valencia_air` - Datos en tiempo real de la API
+  - `raw.valencia_air_historical` - Datos históricos desde CSV
+- **Tablas Marts** (analíticas):
+  - `marts.fct_air_quality_hourly` - Agregaciones por hora
+  - `marts.fct_air_quality_daily` - Agregaciones diarias
+  - `marts.fct_calidad_aire_semanal` - Agregaciones semanales
+  - `marts.fct_alertas_de_contaminacion` - Alertas por exceso de umbrales OMS
+  - `marts.fct_ranking_estaciones` - Ranking de estaciones
+  - `marts.dim_estaciones` - Dimensión de estaciones
 - **Contaminantes**: NO2, PM10, PM2.5, O3, CO, SO2
-- **Frecuencia**: Cada ejecución del script (manual actualmente)
-- **Fuente**: OpenDataSoft Valencia (20 estaciones por petición)
+- **Frecuencia**: Ingesta automática cada 5 minutos
+- **Fuente**: OpenDataSoft Valencia (20 estaciones) + datos históricos CSV
 
 ---
 
@@ -81,25 +94,31 @@ Este documento describe la arquitectura y funcionamiento de un pipeline de datos
 ### 1.1 Estado Actual del Proyecto
 
 **Arquitectura activa**:
-- ✅ **Extracción**: Script Python obtiene datos de la API de Valencia (OpenDataSoft)
+- ✅ **Extracción**: Script Python obtiene datos de la API de Valencia (OpenDataSoft) cada 5 minutos
+- ✅ **Carga histórica**: Backend carga automáticamente datos históricos desde CSV al iniciar
 - ✅ **Validación**: Backend FastAPI valida cada campo con Pydantic
-- ✅ **Persistencia**: Datos estructurados en PostgreSQL (`raw.valencia_air`)
-- ❌ **Transformación**: dbt deshabilitado (no se requiere actualmente)
-- ❌ **Visualización**: Grafana deshabilitado (consultas SQL directas)
+- ✅ **Persistencia**: Datos estructurados en PostgreSQL (`raw.valencia_air` y `raw.valencia_air_historical`)
+- ✅ **Transformación**: dbt ejecuta transformaciones cada 5 minutos (arquitectura Medallion completa)
+- ✅ **Visualización**: Grafana activo con dashboards conectados a tablas marts
 
 **Flujo de datos actual**:
 ```
-API Valencia → Script Python → Backend FastAPI → PostgreSQL
+API Valencia ─────┬───→ Backend FastAPI → PostgreSQL (raw) → dbt → PostgreSQL (marts) → Grafana
+                  │
+Datos CSV ────────┘ (carga automática al inicio)
 ```
 
 **Características principales**:
 - **Validación automática** de tipos y campos con Pydantic
 - **Seguridad en capas** con API de barrera (no acceso directo a BD)
-- **Almacenamiento estructurado** con 19 columnas tipadas
+- **Almacenamiento estructurado** con columnas tipadas
+- **Arquitectura Medallion** completa: raw → staging → intermediate → marts
+- **Alertas automáticas** por exceso de umbrales OMS
+- **Datos históricos** cargados automáticamente desde archivos CSV
 - **Escalabilidad** horizontal del Backend y script de ingesta
 - **Documentación automática** con Swagger UI (http://localhost:8000/docs)
 
-Este pipeline automatiza el proceso de extracción, validación y almacenamiento de datos de calidad del aire, con posibilidad de activar transformaciones (dbt) y visualización (Grafana) en el futuro.
+Este pipeline automatiza el proceso completo de extracción, validación, transformación y visualización de datos de calidad del aire en tiempo real.
 
 ---
 
@@ -108,7 +127,9 @@ Este pipeline automatiza el proceso de extracción, validación y almacenamiento
 El sistema sigue un flujo de datos secuencial que comienza con la extracción de información desde APIs públicas y procesa los datos a través de múltiples capas de transformación:
 
 ```
-APIs Públicas → Script Ingesta Python → Backend API (FastAPI) → PostgreSQL → dbt (Deshabilitado)
+APIs Públicas ──┬──→ Script Ingesta Python → Backend API (FastAPI) → PostgreSQL → dbt → Grafana
+                │
+Datos CSV ──────┘ (carga histórica automática)
 ```
 
 **Arquitectura actual**: El sistema implementa una **API de barrera (Barrier API)** con FastAPI que actúa como capa de protección entre el script de ingesta y la base de datos. Esto proporciona:
@@ -116,15 +137,14 @@ APIs Públicas → Script Ingesta Python → Backend API (FastAPI) → PostgreSQ
 - **Seguridad**: Aislamiento del acceso directo a la base de datos
 - **Escalabilidad**: Múltiples clientes pueden usar la API sin acceso directo a PostgreSQL
 - **Trazabilidad**: Logs centralizados de todas las operaciones
+- **Carga histórica**: Datos CSV se cargan automáticamente al iniciar el backend
 
-**Nota**: El servicio dbt está actualmente deshabilitado. El sistema se enfoca en la ingesta de datos validados directamente en columnas estructuradas de PostgreSQL.
+La base de datos implementa el **patrón Medallion** completo con cuatro capas activas:
 
-La base de datos está preparada para implementar el patrón Medallion con cuatro capas:
-
-- **Raw**: Almacenamiento de datos en columnas estructuradas (actualmente activo)
-- **Staging**: Preparado para vistas SQL de limpieza (deshabilitado)
-- **Intermediate**: Preparado para unificación de fuentes (deshabilitado)
-- **Marts**: Preparado para tablas analíticas agregadas (deshabilitado)
+- **Raw**: Almacenamiento de datos crudos (`raw.valencia_air` y `raw.valencia_air_historical`)
+- **Staging**: Vistas SQL de limpieza y estandarización (`staging.stg_valencia_air`)
+- **Intermediate**: Unificación de fuentes (`intermediate.int_air_quality_union`)
+- **Marts**: Tablas analíticas agregadas (7 tablas de hechos y dimensiones)
 
 ### 2.1 Diagramas de Arquitectura
 
@@ -133,12 +153,12 @@ La base de datos está preparada para implementar el patrón Medallion con cuatr
 ```mermaid
 graph LR
     A[Valencia API] --> B[Python Ingestion Script]
+    H[CSV Históricos] --> C
     B -->|POST /api/ingest| C[Backend API - FastAPI]
     C --> D[(PostgreSQL)]
-    D -.-> E[dbt - Disabled]
-    D -.-> F[Grafana - Disabled]
-    style E stroke-dasharray: 5 5
-    style F stroke-dasharray: 5 5
+    D --> E[dbt]
+    E --> D
+    D --> F[Grafana]
 ```
 
 #### 2.1.2 Flujo de Datos Actual
@@ -146,15 +166,15 @@ graph LR
 ```mermaid
 graph TD
     A[Valencia API] --> B[Ingestion Script]
+    H[CSV Históricos] --> C
     B --> C[Backend API]
-    C -->|Validación Pydantic| D[raw.valencia_air - Columnas Estructuradas]
-    D -.-> E[staging - Preparado pero inactivo]
-    E -.-> F[intermediate - Preparado pero inactivo]
-    F -.-> G[marts - Preparado pero inactivo]
-
-    style E stroke-dasharray: 5 5
-    style F stroke-dasharray: 5 5
-    style G stroke-dasharray: 5 5
+    C -->|Validación Pydantic| D[raw.valencia_air]
+    C -->|Carga inicial| D2[raw.valencia_air_historical]
+    D --> E[staging.stg_valencia_air]
+    D2 --> E
+    E --> F[intermediate.int_air_quality_union]
+    F --> G[marts - 7 tablas analíticas]
+    G --> GR[Grafana Dashboards]
 ```
 
 #### 2.1.3 Interacción de Servicios Docker
@@ -165,31 +185,30 @@ graph TD
         DB[(PostgreSQL:5431)]
         BE[Backend API:8000]
         ING[Ingestion Script]
+        DBT[dbt]
+        GRF[Grafana:3000]
     end
 
     subgraph "Servicios Inactivos"
-        DBT[dbt]
-        GRF[Grafana:3000]
         FE[Frontend:8050]
     end
 
     ING -->|depends_on| DB
     BE -->|depends_on| DB
     ING -->|HTTP POST| BE
-    DBT -.->|depends_on| ING
-    GRF -.->|depends_on| DB
+    DBT -->|depends_on| ING
+    GRF -->|depends_on| DB
+
     FE -.->|depends_on| BE
 
-    style DBT stroke-dasharray: 5 5
-    style GRF stroke-dasharray: 5 5
     style FE stroke-dasharray: 5 5
 ```
 
 **Leyenda**:
 - Líneas sólidas (→): Servicios activos y sus dependencias
 - Líneas punteadas (-.->): Servicios deshabilitados
-- **Servicios activos**: db, backend, ingestion
-- **Servicios inactivos**: dbt, grafana, frontend
+- **Servicios activos**: db, backend, ingestion, dbt, grafana
+- **Servicios inactivos**: frontend
 
 ---
 
@@ -213,9 +232,11 @@ La base de datos PostgreSQL actúa como repositorio central de información para
 
 **Estructura de esquemas**:
 
-La base de datos está preparada con cuatro esquemas para soportar la arquitectura Medallion, aunque actualmente solo se usa el esquema raw:
+La base de datos implementa la arquitectura Medallion completa con cuatro esquemas activos:
 
-1. **raw** (ACTIVO): Contiene la tabla `valencia_air` con columnas estructuradas:
+1. **raw** (ACTIVO): Contiene dos tablas principales:
+
+   **Tabla `valencia_air`** (datos en tiempo real):
    - `id`: Clave primaria autoincrementable (SERIAL)
    - `ingested_at`: Timestamp de cuándo se insertó el registro (TIMESTAMPTZ, automático)
    - `objectid`: ID único de la estación (INTEGER)
@@ -232,11 +253,27 @@ La base de datos está preparada con cuatro esquemas para soportar la arquitectu
    - `geo_shape`: Geometría de la estación (JSONB)
    - `geo_point_2d`: Coordenadas punto 2D (JSONB)
 
-2. **staging** (PREPARADO): Esquema creado pero sin vistas activas. Preparado para transformaciones dbt.
+   **Tabla `valencia_air_historical`** (datos históricos desde CSV):
+   - `id`: Clave primaria autoincrementable (SERIAL)
+   - `ingested_at`: Timestamp de ingesta (TIMESTAMPTZ, automático)
+   - `nombre`: Nombre de la estación (TEXT)
+   - `fecha_carg`: Fecha/hora de la medición (TIMESTAMPTZ)
+   - Contaminantes: `pm25`, `pm10`, `so2`, `co`, `no2`, `o3` (NUMERIC)
 
-3. **intermediate** (PREPARADO): Esquema creado pero sin tablas activas. Preparado para unificación de fuentes.
+2. **staging** (ACTIVO): Contiene vistas/tablas de limpieza:
+   - `stg_valencia_air`: Vista que estandariza y limpia datos de ambas tablas raw
 
-4. **marts** (PREPARADO): Esquema creado pero sin tablas activas. Preparado para tablas analíticas agregadas.
+3. **intermediate** (ACTIVO): Contiene tablas de unificación:
+   - `int_air_quality_union`: Unifica datos de múltiples ciudades en estructura común
+
+4. **marts** (ACTIVO): Contiene tablas analíticas agregadas:
+   - `fct_air_quality_hourly`: Promedios por hora y estación
+   - `fct_air_quality_daily`: Promedios diarios y picos máximos
+   - `fct_calidad_aire_semanal`: Agregaciones semanales
+   - `fct_alertas_de_contaminacion`: Registros que exceden umbrales OMS con severidad
+   - `fct_calidad_del_aire_detallado`: Rankings y análisis detallado
+   - `fct_ranking_estaciones`: Ranking de estaciones por contaminación
+   - `dim_estaciones`: Dimensión con metadatos de estaciones
 
 ---
 
@@ -252,7 +289,15 @@ El script de ingestión es el primer componente del pipeline. Su responsabilidad
 
 Está construido en Python 3.11 (imagen slim) y organizado en módulos especializados siguiendo el principio de separación de responsabilidades.
 
-**Modelo de ejecución**: El script se ejecuta una sola vez y termina (no tiene política de reinicio automático). Docker lo ejecuta con `CMD ["python","main.py"]`. Para automatizar la ingesta periódica, se requiere configuración adicional (ver sección 9.2).
+**Modelo de ejecución**: El script ejecuta en un **bucle infinito cada 5 minutos**:
+```bash
+while true; do
+  python main.py;
+  echo 'Ingesta completada. Esperando 5 minutos...';
+  sleep 300;
+done
+```
+Esto asegura que los datos se actualicen continuamente sin intervención manual.
 
 **Tecnologías utilizadas**:
 - `requests`: Para realizar peticiones HTTP a las APIs públicas y al Backend
@@ -450,7 +495,9 @@ El Backend API es una **API de barrera** construida con FastAPI que actúa como 
 
 **Módulo database.py**:
 
-Contiene la función `init_db()` que inicializa la infraestructura de base de datos:
+Contiene las funciones de inicialización de base de datos y carga de datos históricos:
+
+**Función `init_db()`** - Inicializa la infraestructura:
 
 1. **Lógica de reintentos (10 intentos)**:
    - Crucial en Docker donde PostgreSQL puede tardar en estar listo
@@ -462,15 +509,25 @@ Contiene la función `init_db()` que inicializa la infraestructura de base de da
    - `CREATE SCHEMA IF NOT EXISTS intermediate;`
    - `CREATE SCHEMA IF NOT EXISTS marts;`
 
-3. **Creación de tabla raw.valencia_air**:
-   - 19 columnas estructuradas (sin JSONB genérico)
-   - Columnas para cada contaminante: so2, no2, o3, co, pm10, pm25 (NUMERIC)
-   - Columnas geográficas: geo_shape, geo_point_2d (JSONB)
-   - Timestamp automático: ingested_at (TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)
+3. **Creación de tablas raw**:
+   - `raw.valencia_air`: Datos en tiempo real (19 columnas estructuradas)
+   - `raw.valencia_air_historical`: Datos históricos desde CSV
 
 4. **Idempotencia**:
    - Usa `IF NOT EXISTS` en todas las operaciones
    - Se puede ejecutar múltiples veces sin errores
+
+**Función `load_historical_data()`** - Carga datos históricos:
+
+1. **Verificación**: Solo carga si la tabla `valencia_air_historical` está vacía
+2. **Lectura de CSV**: Lee archivos del directorio `/app/historical/`
+3. **Formato de archivos**:
+   - Separador: punto y coma (`;`)
+   - Encoding: `latin-1`
+   - Columnas: Fecha, PM2.5, PM10, SO2, CO, NO2, O3
+4. **Mapeo de estaciones**: Extrae nombre de estación del nombre del archivo
+5. **Conversión de fechas**: Formato `%d/%m/%Y %H:%M` a TIMESTAMPTZ
+6. **Inserción masiva**: Usa pandas `to_sql()` para inserción eficiente
 
 **Módulo main.py (API)**:
 
@@ -657,27 +714,31 @@ app = FastAPI(
 
 ---
 
-### 3.4 Transformaciones con dbt (DESHABILITADO)
+### 3.4 Transformaciones con dbt (ACTIVO)
 
 **Ubicación**: Directorio `dbt/air_quality_dbt/`
-**Configuración en docker-compose**: Líneas 22-35 (comentadas)
+**Configuración en docker-compose**: Servicio `dbt`
 
-⚠️ **ESTADO ACTUAL**: El servicio dbt está **completamente deshabilitado** en la configuración actual del proyecto. El código dbt existe en el repositorio pero el servicio está comentado en docker-compose.yml.
+✅ **ESTADO ACTUAL**: El servicio dbt está **activo y funcionando**, ejecutando transformaciones cada 5 minutos.
 
-**Razón**: El proyecto actualmente se enfoca en la ingesta validada de datos en columnas estructuradas. Los datos llegan directamente a la tabla `raw.valencia_air` en formato columnar (no JSONB genérico), por lo que las transformaciones staging/intermediate/marts no son necesarias para el caso de uso actual.
+dbt (data build tool) es una herramienta moderna de transformación de datos que permite escribir transformaciones SQL modulares y testeables. En este proyecto, dbt toma los datos de la capa raw y los transforma progresivamente hasta crear tablas analíticas.
 
-**Contenido del directorio**:
-El código dbt implementado incluye:
-- Modelos staging para extraer campos de JSONB (obsoleto con la arquitectura actual)
-- Modelos intermediate para unificar ciudades
-- Modelos marts para agregaciones diarias y horarias
+**Modelos implementados**:
 
-**Para habilitar dbt** (si se necesita en el futuro):
-1. Descomentar el servicio en docker-compose.yml (líneas 22-35)
-2. Ejecutar: `docker-compose up -d dbt`
-3. El servicio ejecutaría transformaciones cada 5 minutos
+**Staging**:
+- `stg_valencia_air`: Limpia y estandariza datos de `raw.valencia_air` y `raw.valencia_air_historical`
 
-dbt (data build tool) es una herramienta moderna de transformación de datos que permite escribir transformaciones SQL modulares y testeables. En este proyecto, dbt está preparado para tomar los datos de la capa raw y transformarlos progresivamente hasta crear tablas analíticas.
+**Intermediate**:
+- `int_air_quality_union`: Unifica datos de múltiples ciudades en estructura común
+
+**Marts** (7 tablas analíticas):
+- `fct_air_quality_hourly`: Promedios por hora
+- `fct_air_quality_daily`: Promedios diarios con picos máximos
+- `fct_calidad_aire_semanal`: Agregaciones semanales
+- `fct_alertas_de_contaminacion`: Alertas por exceso de umbrales OMS (con severidad: LEVE, MODERADO, GRAVE, CRÍTICO)
+- `fct_calidad_del_aire_detallado`: Rankings y análisis detallado
+- `fct_ranking_estaciones`: Ranking de estaciones por nivel de contaminación
+- `dim_estaciones`: Dimensión con metadatos de estaciones (nombre, dirección, zona, coordenadas)
 
 **Configuración especial en Docker**:
 
@@ -870,33 +931,49 @@ Similar a la tabla diaria pero con agregación por hora (no mostrado en el anál
 
 ---
 
-### 3.5 Visualización con Grafana (DESHABILITADO)
+### 3.5 Visualización con Grafana (ACTIVO)
 
-**Configuración en docker-compose**: Líneas 37-51 (comentadas)
+**Configuración en docker-compose**: Servicio `grafana`
 
-⚠️ **ESTADO ACTUAL**: El servicio Grafana está completamente **deshabilitado** en docker-compose.yml (comentado). El proyecto se enfoca en el pipeline de ingesta y almacenamiento. Para habilitar Grafana, ver sección 5.7.
+✅ **ESTADO ACTUAL**: El servicio Grafana está **activo y funcionando** en el puerto 3000.
 
-**Estado actual**: El servicio Grafana está comentado en el archivo docker-compose.yml para simplificar el despliegue inicial y enfocarse en la infraestructura de datos core (ingesta y transformación).
-
-**Configuración del servicio** (cuando está habilitado):
-- Imagen: grafana/grafana-oss:latest
+**Configuración del servicio**:
+- Imagen: grafana/grafana:latest
 - Puerto expuesto: 3000
 - Usuario administrador: admin
-- Contraseña: admin (puede cambiarse en primer acceso)
+- Contraseña: admin
 
 **Volúmenes montados**:
-- ./grafana/provisioning/datasources: Configuración automática de conexión a PostgreSQL
-- ./grafana/provisioning/dashboards: Definición de dashboards pre-configurados
-- ./grafana/dashboards: Archivos JSON de dashboards
-- grafana_data: Volumen persistente para datos de configuración
+- `./grafana/provisioning/datasources`: Configuración automática de conexión a PostgreSQL
+- `grafana_data`: Volumen persistente para datos de configuración
 
-**Nota técnica**: Los archivos de provisionamiento (datasource.yml, dashboards.yml, dashboard JSON) necesitan ser creados antes de habilitar el servicio Grafana.
+**Configuración del datasource PostgreSQL** (`grafana/provisioning/datasources/postgres.yaml`):
+```yaml
+apiVersion: 1
+datasources:
+  - name: PostgreSQL
+    type: postgres
+    url: db:5432
+    database: air_quality_db
+    user: postgres
+    secureJsonData:
+      password: postgres
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+```
 
 **Fuente de datos**:
-Cuando esté habilitado, Grafana conectará directamente al servicio "db" dentro de la red Docker, consultando las tablas del esquema marts para obtener datos agregados listos para visualización.
+Grafana conecta directamente al servicio "db" dentro de la red Docker, consultando las tablas del esquema `marts` para obtener datos agregados:
+- `marts.fct_air_quality_hourly` - Gráficos de evolución horaria
+- `marts.fct_air_quality_daily` - Tendencias diarias
+- `marts.fct_alertas_de_contaminacion` - Panel de alertas
+- `marts.fct_ranking_estaciones` - Rankings de estaciones
+- `marts.dim_estaciones` - Información de estaciones
 
-**Alternativas actuales de visualización**:
-Actualmente, la exploración de datos se realiza mediante consultas SQL directas a PostgreSQL (ver sección 6.2).
+**Acceso**:
+- URL: http://localhost:3000
+- Credenciales: admin / admin
 
 ---
 
@@ -941,23 +1018,32 @@ Los datos se almacenan en `raw.valencia_air` con 19 columnas estructuradas:
 - Temporal: fecha_carg (timestamp de la medición), ingested_at (timestamp de ingesta automático)
 - Geográfico: geo_shape, geo_point_2d (JSONB con coordenadas y geometría)
 
-**Fase 4: Transformación y Análisis (DESHABILITADA actualmente)**
+**Fase 4: Transformación y Análisis (ACTIVA)**
 
-Los servicios dbt y transformaciones están deshabilitados. Si se habilitan en el futuro:
-- Staging: Vistas para limpiar/normalizar datos
-- Intermediate: Unificación de múltiples ciudades
-- Marts: Agregaciones diarias/horarias para análisis
+El servicio dbt ejecuta transformaciones cada 5 minutos:
+1. **Staging** (`stg_valencia_air`): Limpia y estandariza datos crudos
+2. **Intermediate** (`int_air_quality_union`): Unifica datos de múltiples fuentes
+3. **Marts**: Genera 7 tablas analíticas:
+   - Agregaciones horarias, diarias y semanales
+   - Alertas por exceso de umbrales OMS
+   - Rankings de estaciones
+   - Dimensión de estaciones
 
-**Fase 5: Consulta y Visualización**
+**Fase 5: Visualización (ACTIVA)**
 
-**Método actual**: Consultas SQL directas a la tabla `raw.valencia_air` mediante:
+**Grafana** (http://localhost:3000):
+- Dashboards conectados a tablas marts
+- Visualización en tiempo real de métricas
+- Alertas visuales de contaminación
+- Credenciales: admin / admin
+
+**Métodos adicionales de consulta**:
 - psql (línea de comandos)
 - Herramientas gráficas (pgAdmin, DBeaver, etc.)
 - Ver sección 6.2 para ejemplos de consultas útiles
 
 **Métodos futuros** (deshabilitados):
-- Grafana: Visualización de tendencias y dashboards
-- Frontend Dashboard: Interfaz web interactiva con Dash/Plotly
+- Frontend Dashboard: Interfaz web interactiva con Dash/Plotly (código listo en `/frontend`)
 - Endpoints de consulta del Backend API: Para aplicaciones externas
 
 ---
@@ -995,15 +1081,15 @@ docker-compose up -d
 
 **Servicios que se inician** (configuración actual):
 1. **Base de datos PostgreSQL** (puerto 5431) - Contenedor persistente
-2. **Backend API FastAPI** (puerto 8000) - Contenedor persistente que valida e inserta datos
-3. **Script de ingestión Python** (ejecuta una vez y termina) - Obtiene datos y los envía al Backend
+2. **Backend API FastAPI** (puerto 8000) - Contenedor persistente que valida e inserta datos + carga histórica
+3. **Script de ingestión Python** (ejecuta cada 5 minutos) - Obtiene datos y los envía al Backend
+4. **dbt** (transformaciones SQL cada 5 minutos) - Genera tablas analíticas
+5. **Grafana** (puerto 3000) - Dashboards de visualización
 
 **Servicios deshabilitados** (comentados en docker-compose.yml):
-- dbt (transformaciones SQL)
-- Servidor Grafana (puerto 3000)
 - Frontend Dashboard (puerto 8050)
 
-Para habilitar servicios adicionales, ver sección 5.7.
+Para habilitar el frontend, ver sección 5.7.
 
 **Primera ejecución**: La primera vez puede tardar varios minutos porque Docker debe descargar las imágenes base (postgres, dbt).
 
@@ -1020,15 +1106,17 @@ docker-compose ps
 NAME           STATUS          PORTS
 db             Up 2 minutes    0.0.0.0:5431->5432/tcp
 backend        Up 2 minutes    0.0.0.0:8000->8000/tcp
-ingestion      Exited (0)
+ingestion      Up 2 minutes
+dbt            Up 2 minutes
+grafana        Up 2 minutes    0.0.0.0:3000->3000/tcp
 ```
 
 **Interpretación**:
 - `Up`: El contenedor está corriendo activamente
-- `Exited (0)`: El contenedor terminó correctamente (comportamiento esperado para ingestion que ejecuta una sola vez)
-- `Exited (1)`: El contenedor terminó con error (revisar logs con `docker-compose logs ingestion`)
+- `Exited (0)`: El contenedor terminó correctamente
+- `Exited (1)`: El contenedor terminó con error (revisar logs con `docker-compose logs <servicio>`)
 
-**Nota**: Solo verás 3 servicios listados (db, backend, ingestion) ya que dbt, Grafana y frontend están deshabilitados.
+**Nota**: Se listan 5 servicios activos (db, backend, ingestion, dbt, grafana). El frontend está deshabilitado.
 
 ### 5.4 Consultar logs
 
@@ -1110,23 +1198,17 @@ docker-compose down -v
 
 El proyecto incluye servicios adicionales que están deshabilitados por defecto. Esta sección explica cómo habilitarlos según tus necesidades.
 
-#### 5.7.1 Habilitar Grafana
+#### 5.7.1 Grafana (YA HABILITADO)
 
-**Paso 1**: Descomentar el servicio en docker-compose.yml (líneas 37-51)
+✅ **Grafana ya está habilitado por defecto** y se inicia automáticamente con `docker-compose up -d`.
 
-Elimina los caracteres `#` al inicio de cada línea del bloque de Grafana.
+**Acceso**:
+- URL: http://localhost:3000
+- Usuario: admin
+- Contraseña: admin
 
-**Paso 2**: Crear archivos de provisionamiento
-
-Antes de iniciar Grafana, necesitas crear los archivos de configuración:
-
-```bash
-mkdir -p grafana/provisioning/datasources
-mkdir -p grafana/provisioning/dashboards
-mkdir -p grafana/dashboards
-```
-
-Crear `grafana/provisioning/datasources/datasource.yml`:
+**Configuración**:
+El datasource de PostgreSQL está **pre-configurado** en `grafana/provisioning/datasources/postgres.yaml`:
 ```yaml
 apiVersion: 1
 datasources:
@@ -1142,65 +1224,46 @@ datasources:
       postgresVersion: 1700
 ```
 
-Crear `grafana/provisioning/dashboards/dashboards.yml`:
-```yaml
-apiVersion: 1
-providers:
-  - name: 'Air Quality Dashboards'
-    folder: ''
-    type: file
-    options:
-      path: /var/lib/grafana/dashboards
-```
-
-**Paso 3**: Iniciar el servicio
-
+**Si necesitas reiniciar solo Grafana**:
 ```bash
-docker-compose up -d grafana
+docker-compose restart grafana
 ```
 
-**Paso 4**: Acceder a Grafana
+#### 5.7.2 Backend API (YA HABILITADO)
 
-- URL: http://localhost:3000
-- Usuario: admin
-- Contraseña: admin
+✅ **El Backend ya está habilitado por defecto** y se inicia automáticamente.
 
-#### 5.7.2 Habilitar Backend API
+**Acceso**:
+- Swagger UI: http://localhost:8000/docs
+- Endpoint de ingesta: POST http://localhost:8000/api/ingest
 
-**Requisito**: El directorio `backend/` contiene el código de la API FastAPI.
+**Funcionalidades**:
+- Validación de datos con Pydantic
+- Carga automática de datos históricos al iniciar
+- Inserción en PostgreSQL
 
-**Paso 1**: Descomentar el servicio en docker-compose.yml (líneas 53-63)
+#### 5.7.3 Habilitar Frontend Dashboard (DESHABILITADO)
 
-**Paso 2**: Verificar que existe `backend/Dockerfile` y `backend/requirements.txt`
+**Requisito**: El backend ya está activo.
 
-**Paso 3**: Iniciar el servicio
+**Paso 1**: Descomentar el servicio frontend en docker-compose.yml
 
-```bash
-docker-compose up -d backend
-```
-
-**Paso 4**: Acceder a la documentación de la API
-
-- URL: http://localhost:8000/docs (Swagger UI)
-- URL: http://localhost:8000/redoc (ReDoc)
-
-#### 5.7.3 Habilitar Frontend Dashboard
-
-**Requisito**: Requiere que el backend esté activo.
-
-**Paso 1**: Habilitar backend primero (ver 5.7.2)
-
-**Paso 2**: Descomentar el servicio frontend en docker-compose.yml (líneas 65-76)
-
-**Paso 3**: Iniciar el servicio
+**Paso 2**: Iniciar el servicio
 
 ```bash
 docker-compose up -d frontend
 ```
 
-**Paso 4**: Acceder al dashboard
+**Paso 3**: Acceder al dashboard
 
 - URL: http://localhost:8050
+
+**Funcionalidades del frontend** (cuando está habilitado):
+- Gráficos interactivos con Plotly
+- Evolución horaria de NO2
+- Banner de alertas de calidad del aire
+- Actualización automática cada 60 segundos
+- Filtrado por estaciones
 
 #### 5.7.4 Iniciar servicios selectivos
 
@@ -1278,9 +1341,9 @@ nano .env  # o usar tu editor preferido
 | Servicio       | Puerto Interno | Puerto Host | Estado    | Propósito                      |
 |----------------|----------------|-------------|-----------|--------------------------------|
 | PostgreSQL     | 5432           | 5431        | Activo    | Base de datos                  |
-| Grafana        | 3000           | 3000        | Inactivo  | Visualización                  |
-| Backend API    | 8000           | 8000        | Inactivo  | API REST                       |
-| Frontend       | 8050           | 8050        | Inactivo  | Dashboard interactivo          |
+| Backend API    | 8000           | 8000        | Activo    | API REST de ingesta            |
+| Grafana        | 3000           | 3000        | Activo    | Visualización y dashboards     |
+| Frontend       | 8050           | 8050        | Inactivo  | Dashboard interactivo (Dash)   |
 
 #### 5.9.2 Verificar disponibilidad de puertos
 
@@ -1829,21 +1892,50 @@ dbt docs generate
 
 ### 6.5 Acceso a Grafana
 
-⚠️ **Esta sección aplica solo si has habilitado el servicio Grafana** (ver sección 5.7.1 para instrucciones de activación).
+✅ **Grafana está activo** y accesible en http://localhost:3000
 
-**Estado actual**: Grafana está deshabilitado por defecto. Para usar esta funcionalidad, primero debes descomentar el servicio en docker-compose.yml y crear los archivos de provisionamiento.
-
-**Pasos para acceder** (una vez habilitado):
+**Pasos para acceder**:
 
 1. Abrir navegador en http://localhost:3000
 2. Introducir credenciales:
    - Usuario: admin
    - Contraseña: admin
-3. En primer acceso, se solicitará cambiar la contraseña
-4. Navegar a Connections > Data sources para verificar conexión a PostgreSQL
-5. Crear dashboards consultando esquema marts
+3. En primer acceso, se solicitará cambiar la contraseña (puedes saltar este paso)
+4. La conexión a PostgreSQL está **pre-configurada automáticamente**
 
-**Alternativa actual**: Mientras Grafana esté deshabilitado, puedes explorar los datos mediante consultas SQL directas (ver sección 6.2).
+**Crear dashboards**:
+1. Ir a Dashboards → New → New Dashboard
+2. Añadir panel y seleccionar datasource "PostgreSQL"
+3. Escribir consultas SQL contra el esquema `marts`:
+
+**Ejemplos de consultas para dashboards**:
+
+```sql
+-- Evolución horaria de NO2
+SELECT measure_hour, station_name, avg_no2
+FROM marts.fct_air_quality_hourly
+WHERE measure_hour > NOW() - INTERVAL '24 hours'
+ORDER BY measure_hour;
+
+-- Alertas activas
+SELECT *
+FROM marts.fct_alertas_de_contaminacion
+WHERE measure_date = CURRENT_DATE
+ORDER BY severity DESC;
+
+-- Ranking de estaciones
+SELECT *
+FROM marts.fct_ranking_estaciones
+ORDER BY rank_general;
+```
+
+**Tablas disponibles para consultar**:
+- `marts.fct_air_quality_hourly`
+- `marts.fct_air_quality_daily`
+- `marts.fct_calidad_aire_semanal`
+- `marts.fct_alertas_de_contaminacion`
+- `marts.fct_ranking_estaciones`
+- `marts.dim_estaciones`
 
 ---
 
@@ -1855,7 +1947,7 @@ Data-Project-1-Calidad-del-aire/
 │   ├── ciudades/
 │   │   ├── __init__.py
 │   │   ├── valencia.py           # Ingesta de Valencia (activa)
-│   │   └── madrid.py             # Ingesta de Madrid (inactiva)
+│   │   └── madrid.py             # Ingesta de Madrid (preparada)
 │   ├── config.py                 # Configuración de ciudades y URL del Backend
 │   ├── main.py                   # Orquestador principal
 │   ├── utils.py                  # Funciones auxiliares (llamadas API)
@@ -1863,39 +1955,47 @@ Data-Project-1-Calidad-del-aire/
 │   └── Dockerfile                # Imagen Docker (python:3.11-slim)
 ├── backend/                      # [ACTIVO] API de barrera FastAPI
 │   ├── config.py                 # Configuración SQLAlchemy
-│   ├── database.py               # Inicialización de BD (esquemas y tablas)
+│   ├── database.py               # Inicialización de BD y carga histórica
 │   ├── main.py                   # Endpoints FastAPI y modelos Pydantic
 │   ├── requirements.txt          # Dependencias (fastapi, sqlalchemy, pandas, psycopg)
 │   └── Dockerfile                # Imagen Docker para backend
-├── dbt/                          # [INACTIVO] Transformaciones dbt
-│   ├── air_quality_dbt/
-│   │   ├── models/
-│   │   │   ├── staging/
-│   │   │   │   ├── sources.yml   # Definición de fuentes raw
-│   │   │   │   └── stg_valencia_air.sql  # Vista staging de Valencia
-│   │   │   ├── intermediate/
-│   │   │   │   └── int_air_quality_union.sql  # Unión multi-ciudad
-│   │   │   └── marts/
-│   │   │       ├── fct_air_quality_daily.sql   # Agregación diaria
-│   │   │       ├── fct_air_quality_hourly.sql  # Agregación horaria
-│   │   │       └── marts.yml     # Tests y documentación
-│   │   ├── profiles.yml          # Configuración de conexión a PostgreSQL
-│   │   └── dbt_project.yml       # Configuración del proyecto dbt
-│   └── Dockerfile                # Imagen Docker para dbt
-├── backend/                      # [INACTIVO] API REST FastAPI
-│   ├── database.py               # Conexión a BD
-│   ├── main.py                   # Endpoints de la API
-│   ├── requirements.txt          # Dependencias FastAPI
-│   └── Dockerfile                # Imagen Docker para backend
+├── historical/                   # [ACTIVO] Datos históricos CSV
+│   ├── 13_Avda_Francia.csv       # Datos históricos por estación
+│   ├── 14_Moli_del_Sol.csv
+│   ├── 15_Viveros.csv
+│   ├── 16_Politecnic.csv
+│   ├── 17_Pista_de_Silla.csv
+│   ├── 18_Centro.csv
+│   ├── 19_Olivereta.csv
+│   ├── 20_Boulevard_Sud.csv
+│   └── 21_Nazaret_Met.csv        # Formato: Fecha;PM2.5;PM10;SO2;CO;NO2;O3
+├── dbt/                          # [ACTIVO] Transformaciones dbt
+│   └── air_quality_dbt/
+│       ├── models/
+│       │   ├── staging/
+│       │   │   ├── sources.yml   # Definición de fuentes raw
+│       │   │   └── stg_valencia_air.sql  # Vista/tabla staging de Valencia
+│       │   ├── intermediate/
+│       │   │   └── int_air_quality_union.sql  # Unión multi-ciudad
+│       │   └── marts/
+│       │       ├── fct_air_quality_daily.sql   # Agregación diaria
+│       │       ├── fct_air_quality_hourly.sql  # Agregación horaria
+│       │       ├── fct_calidad_aire_semanal.sql  # Agregación semanal
+│       │       ├── fct_alertas_de_contaminacion.sql  # Alertas OMS
+│       │       ├── fct_calidad_del_aire_detallado.sql  # Análisis detallado
+│       │       ├── fct_ranking_estaciones.sql  # Ranking de estaciones
+│       │       ├── dim_estaciones.sql  # Dimensión de estaciones
+│       │       └── marts.yml     # Tests y documentación
+│       ├── profiles.yml          # Configuración de conexión a PostgreSQL
+│       └── dbt_project.yml       # Configuración del proyecto dbt
 ├── frontend/                     # [INACTIVO] Dashboard Dash/Plotly
 │   ├── app.py                    # Aplicación Dash
 │   ├── requirements.txt          # Dependencias Dash/Plotly
 │   └── Dockerfile                # Imagen Docker para frontend
-├── grafana/                      # [INACTIVO] Visualización Grafana
-│   ├── provisioning/
-│   │   ├── datasources/          # (vacío) Requiere crear datasource.yml
-│   │   └── dashboards/           # (vacío) Requiere crear dashboards.yml
-│   └── dashboards/               # (vacío) Archivos JSON de dashboards
+├── grafana/                      # [ACTIVO] Visualización Grafana
+│   └── provisioning/
+│       └── datasources/
+│           └── postgres.yaml     # Configuración de conexión a PostgreSQL
 ├── z_Documentacion/              # Documentación del proyecto
 │   ├── DOCUMENTACION_TECNICA.md  # Este documento
 │   └── *.png                     # Capturas de pantalla del despliegue
@@ -1909,18 +2009,17 @@ Data-Project-1-Calidad-del-aire/
 - **[ACTIVO]**: Servicio habilitado y en funcionamiento
 - **[INACTIVO]**: Código implementado pero servicio deshabilitado en docker-compose.yml
 
-**Notas sobre directorios inactivos**:
-- `dbt/`: Código completo pero comentado en docker-compose.yml (líneas 22-35)
-- `frontend/`: Código completo pero comentado en docker-compose.yml (líneas 65-75)
-- `grafana/`: Directorio existe pero falta configuración de provisionamiento; servicio comentado (líneas 37-51)
-- Para habilitar servicios inactivos, ver sección 5.7
+**Notas sobre directorios**:
+- `historical/`: Contiene archivos CSV con datos históricos de estaciones (cargados automáticamente al iniciar)
+- `frontend/`: Código completo pero comentado en docker-compose.yml
+- Para habilitar el frontend, ver sección 5.7
 
 **Estado actual de servicios**:
 - ✅ **db**: Base de datos PostgreSQL (activo)
-- ✅ **backend**: API FastAPI de validación e ingesta (activo)
-- ✅ **ingestion**: Script Python de extracción de APIs (ejecuta una vez)
-- ❌ **dbt**: Transformaciones SQL (deshabilitado)
-- ❌ **grafana**: Visualización (deshabilitado)
+- ✅ **backend**: API FastAPI de validación e ingesta + carga histórica (activo)
+- ✅ **ingestion**: Script Python de extracción de APIs (ejecuta cada 5 minutos)
+- ✅ **dbt**: Transformaciones SQL (ejecuta cada 5 minutos)
+- ✅ **grafana**: Visualización y dashboards (activo)
 - ❌ **frontend**: Dashboard Dash/Plotly (deshabilitado)
 
 ---
@@ -2066,48 +2165,35 @@ Para integrar una nueva ciudad:
 5. Crear modelo staging en dbt
 6. Actualizar int_air_quality_union.sql
 
-### 9.2 Automatización de ingesta
+### 9.2 Automatización de ingesta (IMPLEMENTADA)
 
-**Estado actual**: El script de ingesta se ejecuta una sola vez y termina (no tiene política de reinicio automático en docker-compose.yml).
+✅ **Estado actual**: La ingesta está **completamente automatizada** y ejecuta cada 5 minutos.
 
-**Opciones para automatizar la ingesta periódica**:
+**Implementación actual**:
+El servicio `ingestion` en docker-compose.yml utiliza un bucle infinito:
+```bash
+while true; do
+  python main.py;
+  echo 'Ingesta completada. Esperando 5 minutos...';
+  sleep 300;
+done
+```
 
-1. **Añadir política de reinicio en Docker con sleep** (más simple):
-   ```yaml
-   ingestion:
-     restart: always
-   ```
-   Luego añadir sleep al final de main.py:
-   ```python
-   import time
-   while True:
-       time.sleep(5)  # Espera inicial
-       orquestador()
-       print("Esperando 5 minutos para siguiente ingesta...")
-       time.sleep(300)  # 5 minutos entre ejecuciones
-   ```
+**Características**:
+- Ejecuta automáticamente cada 5 minutos
+- Continúa funcionando indefinidamente
+- Se reinicia automáticamente si el contenedor se reinicia
+- Logs disponibles con `docker-compose logs -f ingestion`
 
-2. **Usar cron dentro del contenedor**:
-   - Modificar Dockerfile para instalar cron
-   - Crear archivo crontab con programación (ej: `*/5 * * * *` para cada 5 minutos)
-   - Cambiar CMD para iniciar cron en lugar de ejecutar main.py directamente
-   - Mantener contenedor corriendo con proceso cron
+**Para cambiar la frecuencia**:
+Modificar el valor de `sleep` en docker-compose.yml:
+- `sleep 300` = 5 minutos
+- `sleep 600` = 10 minutos
+- `sleep 3600` = 1 hora
 
-3. **Cron del sistema operativo host**:
-   - Crear script que ejecute `docker-compose run --rm ingestion`
-   - Programar con cron del sistema (Linux/Mac) o Task Scheduler (Windows)
-   - Ventaja: No modifica el código del contenedor
-
-4. **Scheduler externo profesional** (más complejo pero más robusto):
-   - Implementar Apache Airflow para orquestación avanzada
-   - Configurar DAGs con dependencias y manejo de errores
-   - Monitoreo y alertas integrados
-   - Ideal para pipelines complejos con múltiples fuentes
-
-**Recomendación**:
-- **Para desarrollo/testing**: Opción 3 (cron del host), más flexible
-- **Para producción simple**: Opción 1 (bucle infinito con restart), más simple
-- **Para producción compleja**: Opción 4 (Airflow), más robusto
+**Para futuras mejoras** (si se necesita orquestación más compleja):
+- **Apache Airflow**: Para DAGs con dependencias y monitoreo avanzado
+- **Prefect/Dagster**: Alternativas modernas a Airflow
 
 ### 9.3 Alertas y notificaciones
 
@@ -2189,13 +2275,22 @@ Implementar sistema de alertas cuando:
 
 ## 10. CONCLUSIONES
 
-Este proyecto implementa una **arquitectura moderna de pipeline de datos con API de barrera** que:
+Este proyecto implementa una **plataforma completa de monitoreo de calidad del aire** que:
 
 **Arquitectura y diseño**:
 - Implementa el patrón Barrier API para seguridad y escalabilidad
-- Separa claramente extracción, validación y persistencia
+- Arquitectura Medallion completa: raw → staging → intermediate → marts
+- Pipeline automatizado end-to-end (ingesta, transformación, visualización)
 - Utiliza contenedores Docker para portabilidad y despliegue simplificado
 - Diseñado para ser extensible a nuevas ciudades con mínimos cambios
+
+**Capacidades implementadas**:
+- ✅ Ingesta automática de datos en tiempo real (cada 5 minutos)
+- ✅ Carga automática de datos históricos desde CSV
+- ✅ Transformaciones SQL con dbt (7 tablas analíticas)
+- ✅ Sistema de alertas por exceso de umbrales OMS
+- ✅ Visualización con Grafana
+- ✅ Rankings de estaciones por nivel de contaminación
 
 **Validación y calidad de datos**:
 - Validación automática con Pydantic antes de inserción

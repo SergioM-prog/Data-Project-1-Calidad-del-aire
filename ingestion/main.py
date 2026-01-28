@@ -21,7 +21,7 @@ def run_single_ingestion(city, settings, func):
     """
     print(f"--- INGESTA: {city.upper()} ---")
     try:
-        func(settings["api_url"], BARRIER_API_URL)
+        func(settings["api_url"], f"{BARRIER_API_URL}/api/ingest")
         print(f"✅ Completado: {city}")
         return True
     except Exception as e:
