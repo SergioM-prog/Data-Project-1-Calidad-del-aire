@@ -1,4 +1,3 @@
-import os #para leer las variables de entorno
 import requests #para llamar a la API (los GETs)
 import pandas as pd # para transformar el JSON en tabla y hacer cálculos
 
@@ -8,10 +7,11 @@ import plotly.express as px
 from requests.exceptions import HTTPError
 import plotly.graph_objects as go
 import math
+from config import BARRIER_API_URL, FRONTEND_API_KEY
 
 
 
-API_URL = os.getenv("API_URL", "http://backend:8000") #lee la variable API_URL
+
 
 app = dash.Dash(__name__, title="🌤️ App Ciudadana | Calidad del aire") #Creamos la app "Dash" y título del navegador
 
@@ -166,18 +166,19 @@ def severity_style(nivel: int):
 
 def fetch_alert_now(station_id: int):
     r = requests.get(
-        f"{API_URL}/api/alerts/now",
+        f"{BARRIER_API_URL}/api/alerts/now",
         params={"station_id": int(station_id)},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=10
     )
     if r.status_code == 404:
         return None  # no hay alerta
-    r.raise_for_status() #si backend devuelve 400/500 salta un error 
+    r.raise_for_status() #si backend devuelve 400/500 salta un error
     return r.json() #convierte la respuesta JSON en dict/list de Python
 
 #tarjeta ranking estaciones con menor contaminación
 def menos_contaminacion(limit: int = 3) -> dict:
-    r = requests.get(f"{API_URL}/api/zonas-verdes", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{BARRIER_API_URL}/api/zonas-verdes", params={"limit": limit}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=20)
     r.raise_for_status()
     return r.json()
 
@@ -219,31 +220,33 @@ def choose_zoom(window: str) -> float:
 
 
 def fetch_hourly(limit=5000) -> pd.DataFrame:
-    r = requests.get(f"{API_URL}/api/hourly-metrics", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{BARRIER_API_URL}/api/hourly-metrics", params={"limit": limit}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=20)
     r.raise_for_status()
     return pd.DataFrame(r.json())
 
 
 def fetch_history(station_id: int, days: int, metric: str) -> pd.DataFrame:
     r = requests.get(
-        f"{API_URL}/api/history/hourly",
+        f"{BARRIER_API_URL}/api/history/hourly",
         params={"station_id": station_id, "days": days, "metric": metric},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=20
     )
     r.raise_for_status()
     return pd.DataFrame(r.json())
 
 def fetch_station_latest_hourly(station_id: int) -> dict:
-    url = f"{API_URL}/api/station/latest-hourly"
-    r = requests.get(url, params={"station_id": station_id}, timeout=10)
+    url = f"{BARRIER_API_URL}/api/station/latest-hourly"
+    r = requests.get(url, params={"station_id": station_id}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
     r.raise_for_status()
     return r.json()
 
 #fetch del mapa
 def fetch_station_history(station_id: int, window: str) -> pd.DataFrame:
     r = requests.get(
-        f"{API_URL}/air_quality/history",
+        f"{BARRIER_API_URL}/air_quality/history",
         params={"station_id": int(station_id), "window": window},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=15,
     )
     r.raise_for_status()
@@ -362,7 +365,7 @@ app.layout = html.Div(
 )
 def load_stations(_):
     try:
-        r = requests.get(f"{API_URL}/api/stations", timeout=10)
+        r = requests.get(f"{BARRIER_API_URL}/api/stations", headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
         r.raise_for_status()
         stations = r.json()
 
@@ -497,8 +500,9 @@ def render_banner(station_id):
 
     try:
         r = requests.get(
-            f"{API_URL}/api/alerts/now",
+            f"{BARRIER_API_URL}/api/alerts/now",
             params={"station_id": int(station_id)},
+            headers={"X-API-Key": FRONTEND_API_KEY},
             timeout=15
         )
 
