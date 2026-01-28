@@ -43,6 +43,7 @@ services:
       - ./dbt/air_quality_dbt:/usr/app/air_quality_dbt
     working_dir: /usr/app/air_quality_dbt
     env_file: .env
+    platform: linux/amd64
     depends_on:
       - db
 
@@ -96,18 +97,18 @@ services:
       retries: 12
       start_period: 60s  # Tiempo de gracia para cargar datos históricos
 
-  # # 5. FRONTEND USUARIO (Dash/Plotly - Puerto 8050)
-  # frontend:
-  #   build: ./frontend
-  #   container_name: air-quality-frontend
-  #   ports:
-  #     - "8050:8050" # Acceso: http://localhost:8050
-  #   environment:
-  #     # IMPORTANTE: Aquí usamos el nombre del servicio 'backend' dentro de la red Docker
-  #     - API_URL=http://backend:8000
-  #   depends_on:
-  #     - backend
-  #   restart: unless-stopped
+  # 5. FRONTEND USUARIO (Dash/Plotly - Puerto 8050)
+  frontend:
+    build: ./frontend
+    container_name: air-quality-frontend
+    ports:
+      - "8050:8050" # Acceso: http://localhost:8050
+    environment:
+      # IMPORTANTE: Aquí usamos el nombre del servicio 'backend' dentro de la red Docker
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 
 volumes:
