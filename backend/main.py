@@ -486,3 +486,41 @@ def get_stations(service: str = Depends(verify_api_key)):
         print(f"Error en stations: {e}")
         raise HTTPException(status_code=500, detail="Error al obtener estaciones")
 
+
+@app.get("/api/limites/{station_id}")
+def get_limites_estacion(station_id: int, service: str = Depends(verify_api_key)):
+    """
+    Devuelve los límites dinámicos (P75) para una estación específica.
+    Calcula el promedio de los límites de todas las horas.
+    """
+    try:
+        query = """
+            SELECT
+                ROUND(AVG(p75_no2)::numeric, 2)::float as limite_no2,
+                ROUND(AVG(p75_pm10)::numeric, 2)::float as limite_pm10,
+                ROUND(AVG(p75_pm25)::numeric, 2)::float as limite_pm25,
+                ROUND(AVG(p75_so2)::numeric, 2)::float as limite_so2,
+                ROUND(AVG(p75_o3)::numeric, 2)::float as limite_o3,
+                ROUND(AVG(p75_co)::numeric, 2)::float as limite_co
+            FROM marts.fct_limites_de_contaminacion
+            WHERE id_estacion = %(station_id)s
+            GROUP BY id_estacion
+        """
+        df = pd.read_sql(query, engine, params={"station_id": station_id})
+
+        if df.empty:
+            # Si no hay límites, devolver límites OMS por defecto
+            return {
+                "limite_no2": 25.0,
+                "limite_pm10": 45.0,
+                "limite_pm25": 15.0,
+                "limite_so2": 40.0,
+                "limite_o3": 100.0,
+                "limite_co": 10.0
+            }
+
+        return df.to_dict(orient="records")[0]
+    except Exception as e:
+        print(f"Error en limites: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener límites")
+

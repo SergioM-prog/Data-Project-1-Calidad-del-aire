@@ -241,6 +241,13 @@ def fetch_station_latest_hourly(station_id: int) -> dict:
     r.raise_for_status()
     return r.json()
 
+def fetch_limites_estacion(station_id: int) -> dict:
+    """Obtiene los límites dinámicos (P75) para una estación específica"""
+    url = f"{BARRIER_API_URL}/api/limites/{station_id}"
+    r = requests.get(url, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
 #fetch del mapa
 def fetch_station_history(station_id: int, window: str) -> pd.DataFrame:
     r = requests.get(
@@ -584,6 +591,24 @@ def update_pollutants_bar(station_id):
     station_name = data.get("nombre_estacion", f"Estación {station_id}")
     measure_hour = data.get("fecha_hora", "")
 
+    # Obtener límites dinámicos de la estación
+    try:
+        limites = fetch_limites_estacion(int(station_id))
+        # Mapear los límites del backend al formato que necesita el frontend
+        VALOR_LÍMITE_DINAMICO = {
+            "PM2.5": limites.get("limite_pm25"),
+            "PM10": limites.get("limite_pm10"),
+            "NO2": limites.get("limite_no2"),
+            "O3": limites.get("limite_o3"),
+            "SO2": limites.get("limite_so2"),
+            "CO": limites.get("limite_co"),
+        }
+    except Exception as e:
+        print(f"Error cargando límites dinámicos: {e}. Usando límites OMS por defecto.")
+        # Fallback a límites OMS si falla la consulta
+        VALOR_LÍMITE_DINAMICO = VALOR_LÍMITE.copy()
+        VALOR_LÍMITE_DINAMICO["CO"] = 10.0
+
     pollutants = [
         ("PM2.5", data.get("promedio_pm25")),
         ("PM10",  data.get("promedio_pm10")),
@@ -604,9 +629,8 @@ def update_pollutants_bar(station_id):
     df["pollutant"] = pd.Categorical(df["pollutant"], categories=order, ordered=True)
     df = df.sort_values("pollutant")
 
-    # --- Límite recomendado (NUMÉRICO si existe) ---
-    # IMPORTANTE: el dict debe tener claves EXACTAS: "O3" (letra O, no cero)
-    df["valor_limite"] = df["pollutant"].map(VALOR_LÍMITE)
+    # --- Límite recomendado DINÁMICO (P75 de la estación) ---
+    df["valor_limite"] = df["pollutant"].map(VALOR_LÍMITE_DINAMICO)
 
     # --- Nivel y color ---
     df["level_label"] = df.apply(lambda r: level_for_pollutant(r["pollutant"], r["value"])[0], axis=1)
