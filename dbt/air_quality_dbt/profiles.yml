@@ -9,4 +9,6 @@ air_quality_dbt:
       threads: 1
       type: postgres
       user: postgres
+      # Suprimir warnings de PostgreSQL (solo mostrar errores)
+      client_min_messages: error
   target: dev
