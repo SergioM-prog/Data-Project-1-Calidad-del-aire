@@ -74,11 +74,3 @@ sources:
               config:
                 severity: error
                 error_if: ">0"
-
-      # - name: raw.madrid_air
-      #   description: "Tabla con los datos crudos de la API de Madrid (formato JSONB)"
-      #   columns:
-      #     - name: station_id
-      #       description: "Identificador único de la estación de Madrid"
-      #       tests:
-      #         - not_null

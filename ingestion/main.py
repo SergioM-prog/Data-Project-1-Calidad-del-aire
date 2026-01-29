@@ -5,12 +5,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from config import CITIES_CONFIG, BARRIER_API_URL
 from ciudades import f_run_ingestion_valencia
-# from ciudades import f_run_ingestion_madrid
 
 # Mapeo de funciones: asocia el nombre de la ciudad con su función de ingesta
 INGESTION_MAP = {
     "valencia": f_run_ingestion_valencia,
-    # "madrid": f_run_ingestion_madrid,
 }
 
 
