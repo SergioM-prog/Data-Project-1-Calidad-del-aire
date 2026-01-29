@@ -1,0 +1,535 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Estado Actual",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "center",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": false
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT TO_CHAR(MAX(fecha_carg) + INTERVAL '2 hours', 'DD/MM/YYYY HH24:MI') as \"Última Actualización\" FROM raw.valencia_air_real_hourly;",
+          "refId": "A"
+        }
+      ],
+      "title": "Ultima Actualizacion de Datos",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) as total_estaciones FROM marts.fct_dim_estaciones;",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Estaciones",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(DISTINCT id_estacion) as estaciones_con_alerta FROM marts.fct_alertas_actuales_contaminacion;",
+          "refId": "A"
+        }
+      ],
+      "title": "Estaciones con Alertas Activas",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  (SELECT COUNT(*) FROM marts.fct_dim_estaciones) - \n  (SELECT COUNT(DISTINCT id_estacion) FROM marts.fct_alertas_actuales_contaminacion) \nas estaciones_ok;",
+          "refId": "A"
+        }
+      ],
+      "title": "Estaciones Sin Alertas",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": [
+            { "options": { "0": { "color": "green", "index": 0, "text": "Sin alerta" } }, "type": "value" },
+            { "options": { "1": { "color": "red", "index": 1, "text": "Con alerta" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 5 },
+      "id": 5,
+      "options": {
+        "basemap": { "config": {}, "name": "Layer 0", "type": "default" },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": false,
+          "showScale": false,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "config": {
+              "showLegend": true,
+              "style": {
+                "color": { "field": "tiene_alerta", "fixed": "green" },
+                "opacity": 0.8,
+                "rotation": { "fixed": 0, "max": 360, "min": -360, "mode": "mod" },
+                "size": { "fixed": 10, "max": 15, "min": 5 },
+                "symbol": { "fixed": "img/icons/marker/circle.svg", "mode": "fixed" },
+                "text": { "field": "estado_alerta", "fixed": "", "mode": "fixed" },
+                "textConfig": { "fontSize": 12, "offsetX": 0, "offsetY": 0, "textAlign": "center", "textBaseline": "middle" }
+              }
+            },
+            "location": { "latitude": "latitud", "longitude": "longitud", "mode": "coords" },
+            "name": "Estaciones",
+            "tooltip": true,
+            "type": "markers"
+          }
+        ],
+        "tooltip": { "mode": "details" },
+        "view": {
+          "allLayers": true,
+          "id": "coords",
+          "lat": 39.47,
+          "lon": -0.38,
+          "zoom": 12
+        }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  e.id_estacion,\n  e.nombre_estacion,\n  e.ciudad,\n  e.latitud,\n  e.longitud,\n  CASE WHEN a.id_estacion IS NOT NULL THEN 1 ELSE 0 END as tiene_alerta,\n  CASE WHEN a.id_estacion IS NOT NULL THEN 'Con alerta' ELSE 'Sin alerta' END as estado_alerta\nFROM marts.fct_dim_estaciones e\nLEFT JOIN (\n  SELECT DISTINCT id_estacion FROM marts.fct_alertas_actuales_contaminacion\n) a ON e.id_estacion = a.id_estacion;",
+          "refId": "A"
+        }
+      ],
+      "title": "Mapa de Estaciones",
+      "type": "geomap"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "nombre_estacion" },
+            "properties": [{ "id": "custom.width", "value": 200 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "fecha_hora_alerta" },
+            "properties": [{ "id": "custom.width", "value": 150 }]
+          }
+        ]
+      },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 5 },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "fecha_hora_alerta" }]
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  (fecha_hora_alerta AT TIME ZONE 'Europe/Madrid')::timestamp as fecha_hora_alerta,\n  nombre_estacion,\n  ciudad,\n  CASE WHEN alerta_no2 THEN CONCAT('NO2: ', ROUND(valor_no2::numeric, 1), ' (lim: ', ROUND(limite_no2::numeric, 1), ')') ELSE NULL END as alerta_no2,\n  CASE WHEN alerta_pm10 THEN CONCAT('PM10: ', ROUND(valor_pm10::numeric, 1), ' (lim: ', ROUND(limite_pm10::numeric, 1), ')') ELSE NULL END as alerta_pm10,\n  CASE WHEN alerta_pm25 THEN CONCAT('PM2.5: ', ROUND(valor_pm25::numeric, 1), ' (lim: ', ROUND(limite_pm25::numeric, 1), ')') ELSE NULL END as alerta_pm25,\n  CASE WHEN alerta_so2 THEN CONCAT('SO2: ', ROUND(valor_so2::numeric, 1), ' (lim: ', ROUND(limite_so2::numeric, 1), ')') ELSE NULL END as alerta_so2,\n  CASE WHEN alerta_o3 THEN CONCAT('O3: ', ROUND(valor_o3::numeric, 1), ' (lim: ', ROUND(limite_o3::numeric, 1), ')') ELSE NULL END as alerta_o3,\n  CASE WHEN alerta_co THEN CONCAT('CO: ', ROUND(valor_co::numeric, 1), ' (lim: ', ROUND(limite_co::numeric, 1), ')') ELSE NULL END as alerta_co\nFROM marts.fct_alertas_actuales_contaminacion\nORDER BY fecha_hora_alerta DESC\nLIMIT 50;",
+          "refId": "A"
+        }
+      ],
+      "title": "Alertas Activas (Detalle)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 101,
+      "panels": [],
+      "title": "Analisis Temporal por Estacion",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "ug/m3",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "conc"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  (fecha_hora AT TIME ZONE 'Europe/Madrid')::timestamp as time,\n  ${parametro:raw} as \"${parametro:raw}\"\nFROM marts.fct_air_quality_hourly\nWHERE id_estacion = ${estacion}\n  AND fecha_hora >= NOW() - INTERVAL '${periodo}'\nORDER BY fecha_hora;",
+          "refId": "A"
+        }
+      ],
+      "title": "Evolucion ${parametro:raw}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "ug/m3",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "conc"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 8,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  (fecha_hora AT TIME ZONE 'Europe/Madrid')::timestamp as time,\n  promedio_no2 as \"NO2\",\n  promedio_pm10 as \"PM10\",\n  promedio_pm25 as \"PM2.5\",\n  promedio_so2 as \"SO2\",\n  promedio_ozono as \"O3\",\n  promedio_co as \"CO\"\nFROM marts.fct_air_quality_hourly\nWHERE id_estacion = ${estacion}\n  AND fecha_hora >= NOW() - INTERVAL '${periodo}'\nORDER BY fecha_hora;",
+          "refId": "A"
+        }
+      ],
+      "title": "Todos los Parametros",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "ug/m3",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "conc"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "id": 9,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT \n  (fecha_medicion AT TIME ZONE 'Europe/Madrid')::timestamp as time,\n  ${parametro_diario:raw} as \"${parametro_diario:raw}\"\nFROM marts.fct_air_quality_daily\nWHERE id_estacion = ${estacion}\n  AND fecha_medicion >= NOW() - INTERVAL '7 days'\nORDER BY fecha_medicion;",
+          "refId": "A"
+        }
+      ],
+      "title": "Promedios Diarios (ultimos 7 dias) - ${parametro_diario:raw}",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "tags": ["calidad-aire", "valencia", "alertas"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "7 days", "value": "7 days" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Periodo",
+        "multi": false,
+        "name": "periodo",
+        "options": [
+          { "selected": false, "text": "1 hour", "value": "1 hour" },
+          { "selected": false, "text": "24 hours", "value": "24 hours" },
+          { "selected": true, "text": "7 days", "value": "7 days" },
+          { "selected": false, "text": "30 days", "value": "30 days" },
+          { "selected": false, "text": "1 year", "value": "1 year" }
+        ],
+        "query": "1 hour,24 hours,7 days,30 days,1 year",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "PostgreSQL" },
+        "definition": "SELECT id_estacion as __value, nombre_estacion as __text FROM marts.fct_dim_estaciones ORDER BY nombre_estacion;",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Estacion",
+        "multi": false,
+        "name": "estacion",
+        "options": [],
+        "query": "SELECT id_estacion as __value, nombre_estacion as __text FROM marts.fct_dim_estaciones ORDER BY nombre_estacion;",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": true, "text": "promedio_no2", "value": "promedio_no2" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Parametro",
+        "multi": false,
+        "name": "parametro",
+        "options": [
+          { "selected": true, "text": "promedio_no2", "value": "promedio_no2" },
+          { "selected": false, "text": "promedio_pm10", "value": "promedio_pm10" },
+          { "selected": false, "text": "promedio_pm25", "value": "promedio_pm25" },
+          { "selected": false, "text": "promedio_so2", "value": "promedio_so2" },
+          { "selected": false, "text": "promedio_ozono", "value": "promedio_ozono" },
+          { "selected": false, "text": "promedio_co", "value": "promedio_co" }
+        ],
+        "query": "promedio_no2,promedio_pm10,promedio_pm25,promedio_so2,promedio_ozono,promedio_co",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": { "selected": true, "text": "promedio_diario_no2", "value": "promedio_diario_no2" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Parametro Diario",
+        "multi": false,
+        "name": "parametro_diario",
+        "options": [
+          { "selected": true, "text": "promedio_diario_no2", "value": "promedio_diario_no2" },
+          { "selected": false, "text": "promedio_diario_pm10", "value": "promedio_diario_pm10" },
+          { "selected": false, "text": "promedio_diario_pm25", "value": "promedio_diario_pm25" }
+        ],
+        "query": "promedio_diario_no2,promedio_diario_pm10,promedio_diario_pm25",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {
+    "hidden": true
+  },
+  "timezone": "Europe/Madrid",
+  "title": "Panel de Administracion - Calidad del Aire",
+  "uid": "air-quality-admin",
+  "version": 1,
+  "weekStart": ""
+}
