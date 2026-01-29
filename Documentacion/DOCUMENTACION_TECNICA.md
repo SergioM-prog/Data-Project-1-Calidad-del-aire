@@ -2969,3 +2969,54 @@ curl http://localhost:8000/docs
 3. Reiniciar frontend: `docker-compose restart frontend`
 
 ---
+
+## 12. ANÁLISIS DE SEGURIDAD Y PROBLEMAS IDENTIFICADOS
+
+**Fecha del análisis**: 29 de enero de 2026
+
+Este análisis exhaustivo del código identificó múltiples problemas de seguridad, bugs y oportunidades de mejora clasificados por severidad.
+
+### 12.1 Resumen Ejecutivo de Issues
+
+| # | Problema | Ubicación | Severidad | Impacto |
+|---|----------|-----------|-----------|---------|
+| 1 | Endpoint faltante rompe frontend | frontend/app.py:49 | CRÍTICO | Frontend no funcional |
+| 2 | Credenciales hardcodeadas | dbt/profiles.yml:4-6 | CRÍTICO | Exposición de secrets |
+| 3 | Sin HTTPS en producción | backend/main.py:93-114 | CRÍTICO | API keys sin cifrar |
+| 4 | Password default Grafana | docker-compose.yml:68 | MEDIO | Acceso no autorizado |
+| 5 | Riesgo SQL injection | backend/database.py:281 | MEDIO | Inyección SQL potencial |
+| 6 | Sin rate limiting | backend/main.py | MEDIO | Vulnerabilidad DoS |
+| 7 | Sin logging estructurado | Todos los archivos | BAJO | Dificulta debugging |
+| 8 | CSVs sin validación | backend/database.py:303-398 | MEDIO | Corrupción de datos |
+| 9 | Sin sanitización Telegram | telegram_alerts/main.py:75-80 | MEDIO | Inyección markdown |
+| 10 | Intervalos hardcodeados | Múltiples archivos | BAJO | Falta configurabilidad |
+
+### 12.2 Análisis Detallado de Problemas Críticos
+
+Ver documentación completa en ARCHITECTURE.md para código de ejemplo y soluciones detalladas.
+
+**Problemas críticos identificados:**
+1. Endpoint /api/v1/hourly-metrics faltante (rompe frontend)
+2. Credenciales hardcodeadas en dbt/profiles.yml
+3. Sin HTTPS para transmisión de API keys
+4. Sin rate limiting en endpoints públicos
+5. CSVs cargados sin validación
+
+**Recomendaciones de seguridad:**
+- Implementar HTTPS obligatorio en producción
+- Migrar todas las credenciales a variables de entorno
+- Agregar rate limiting con slowapi
+- Implementar logging estructurado
+- Validar tamaño y schema de CSVs
+
+**Roadmap de correcciones:**
+- Sprint 1 (Crítico): Endpoint faltante + HTTPS + Credenciales
+- Sprint 2 (Alto): Logging + Rate limiting + Validaciones
+- Sprint 3 (Medio): Tests + CI/CD + Monitoring
+
+---
+
+**FIN DEL DOCUMENTO**
+
+Última actualización: 29 de enero de 2026
+Total de secciones: 12
