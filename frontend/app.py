@@ -1,4 +1,3 @@
-import os #para leer las variables de entorno
 import requests #para llamar a la API (los GETs)
 import pandas as pd # para transformar el JSON en tabla y hacer cálculos
 
@@ -8,10 +7,11 @@ import plotly.express as px
 from requests.exceptions import HTTPError
 import plotly.graph_objects as go
 import math
+from config import BARRIER_API_URL, FRONTEND_API_KEY
 
 
 
-API_URL = os.getenv("API_URL", "http://backend:8000") #lee la variable API_URL
+
 
 app = dash.Dash(__name__, title="🌤️ App Ciudadana | Calidad del aire") #Creamos la app "Dash" y título del navegador
 
@@ -166,18 +166,19 @@ def severity_style(nivel: int):
 
 def fetch_alert_now(station_id: int):
     r = requests.get(
-        f"{API_URL}/api/alerts/now",
+        f"{BARRIER_API_URL}/api/alerts/now",
         params={"station_id": int(station_id)},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=10
     )
     if r.status_code == 404:
         return None  # no hay alerta
-    r.raise_for_status() #si backend devuelve 400/500 salta un error 
+    r.raise_for_status() #si backend devuelve 400/500 salta un error
     return r.json() #convierte la respuesta JSON en dict/list de Python
 
 #tarjeta ranking estaciones con menor contaminación
 def menos_contaminacion(limit: int = 3) -> dict:
-    r = requests.get(f"{API_URL}/api/zonas-verdes", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{BARRIER_API_URL}/api/zonas-verdes", params={"limit": limit}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=20)
     r.raise_for_status()
     return r.json()
 
@@ -214,36 +215,45 @@ def severity_fill(nivel):
 
 #zoom mapa
 def choose_zoom(window: str) -> float:
-    return {"Ahora": 15.5, "8h": 15.0, "24h": 14.5, "7d": 14.0}.get(window, 14.5)
+    return {"Ahora": 12.5, "8h": 12.5, "24h": 12.5, "7d": 12.5}.get(window, 12.5)
 
 
 
 def fetch_hourly(limit=5000) -> pd.DataFrame:
-    r = requests.get(f"{API_URL}/api/hourly-metrics", params={"limit": limit}, timeout=20)
+    r = requests.get(f"{BARRIER_API_URL}/api/hourly-metrics", params={"limit": limit}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=20)
     r.raise_for_status()
     return pd.DataFrame(r.json())
 
 
 def fetch_history(station_id: int, days: int, metric: str) -> pd.DataFrame:
     r = requests.get(
-        f"{API_URL}/api/history/hourly",
+        f"{BARRIER_API_URL}/api/history/hourly",
         params={"station_id": station_id, "days": days, "metric": metric},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=20
     )
     r.raise_for_status()
     return pd.DataFrame(r.json())
 
 def fetch_station_latest_hourly(station_id: int) -> dict:
-    url = f"{API_URL}/api/station/latest-hourly"
-    r = requests.get(url, params={"station_id": station_id}, timeout=10)
+    url = f"{BARRIER_API_URL}/api/station/latest-hourly"
+    r = requests.get(url, params={"station_id": station_id}, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_limites_estacion(station_id: int) -> dict:
+    """Obtiene los límites dinámicos (P75) para una estación específica"""
+    url = f"{BARRIER_API_URL}/api/limites/{station_id}"
+    r = requests.get(url, headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
     r.raise_for_status()
     return r.json()
 
 #fetch del mapa
 def fetch_station_history(station_id: int, window: str) -> pd.DataFrame:
     r = requests.get(
-        f"{API_URL}/air_quality/history",
+        f"{BARRIER_API_URL}/air_quality/history",
         params={"station_id": int(station_id), "window": window},
+        headers={"X-API-Key": FRONTEND_API_KEY},
         timeout=15,
     )
     r.raise_for_status()
@@ -362,12 +372,12 @@ app.layout = html.Div(
 )
 def load_stations(_):
     try:
-        r = requests.get(f"{API_URL}/api/stations", timeout=10)
+        r = requests.get(f"{BARRIER_API_URL}/api/stations", headers={"X-API-Key": FRONTEND_API_KEY}, timeout=10)
         r.raise_for_status()
         stations = r.json()
 
         options = [
-            {"label": s["station_name"], "value": s["station_id"]}
+            {"label": s["nombre_estacion"], "value": s["id_estacion"]}
             for s in stations
         ]
 
@@ -406,17 +416,17 @@ def load_zonas_verdes(_):
 
         def crear_tooltip(zona):
             """Crea el texto del tooltip con los niveles de contaminantes"""
-            lineas = [f"📍 {zona.get('station_name', 'Estación')}"]
+            lineas = [f"📍 {zona.get('nombre_estacion', 'Estación')}"]
             lineas.append("─" * 20)
-            lineas.append(f"NO₂:   {formato_valor(zona.get('avg_no2'))} µg/m³")
-            lineas.append(f"PM2.5: {formato_valor(zona.get('avg_pm25'))} µg/m³")
-            lineas.append(f"PM10:  {formato_valor(zona.get('avg_pm10'))} µg/m³")
-            lineas.append(f"O₃:    {formato_valor(zona.get('avg_o3'))} µg/m³")
-            lineas.append(f"SO₂:   {formato_valor(zona.get('avg_so2'))} µg/m³")
+            lineas.append(f"NO₂:   {formato_valor(zona.get('promedio_no2'))} µg/m³")
+            lineas.append(f"PM2.5: {formato_valor(zona.get('promedio_pm25'))} µg/m³")
+            lineas.append(f"PM10:  {formato_valor(zona.get('promedio_pm10'))} µg/m³")
+            lineas.append(f"O₃:    {formato_valor(zona.get('promedio_ozono'))} µg/m³")
+            lineas.append(f"SO₂:   {formato_valor(zona.get('promedio_so2'))} µg/m³")
             return "\n".join(lineas)
 
         def crear_podio_card(posicion, zona):
-            nombre = zona.get("station_name", "Estación desconocida")
+            nombre = zona.get("nombre_estacion", "Estación desconocida")
             config = podio_config[posicion]
             tooltip_text = crear_tooltip(zona)
 
@@ -497,8 +507,9 @@ def render_banner(station_id):
 
     try:
         r = requests.get(
-            f"{API_URL}/api/alerts/now",
+            f"{BARRIER_API_URL}/api/alerts/now",
             params={"station_id": int(station_id)},
+            headers={"X-API-Key": FRONTEND_API_KEY},
             timeout=15
         )
 
@@ -577,15 +588,33 @@ def update_pollutants_bar(station_id):
     if not data:
         return empty_fig(), "No hay datos disponibles para esta estación."
 
-    station_name = data.get("station_name", f"Estación {station_id}")
-    measure_hour = data.get("measure_hour", "")
+    station_name = data.get("nombre_estacion", f"Estación {station_id}")
+    measure_hour = data.get("fecha_hora", "")
+
+    # Obtener límites dinámicos de la estación
+    try:
+        limites = fetch_limites_estacion(int(station_id))
+        # Mapear los límites del backend al formato que necesita el frontend
+        VALOR_LÍMITE_DINAMICO = {
+            "PM2.5": limites.get("limite_pm25"),
+            "PM10": limites.get("limite_pm10"),
+            "NO2": limites.get("limite_no2"),
+            "O3": limites.get("limite_o3"),
+            "SO2": limites.get("limite_so2"),
+            "CO": limites.get("limite_co"),
+        }
+    except Exception as e:
+        print(f"Error cargando límites dinámicos: {e}. Usando límites OMS por defecto.")
+        # Fallback a límites OMS si falla la consulta
+        VALOR_LÍMITE_DINAMICO = VALOR_LÍMITE.copy()
+        VALOR_LÍMITE_DINAMICO["CO"] = 10.0
 
     pollutants = [
-        ("PM2.5", data.get("avg_pm25")),
-        ("PM10",  data.get("avg_pm10")),
-        ("NO2",   data.get("avg_no2")),
-        ("O3",    data.get("avg_o3")),
-        ("SO2",   data.get("avg_so2")),
+        ("PM2.5", data.get("promedio_pm25")),
+        ("PM10",  data.get("promedio_pm10")),
+        ("NO2",   data.get("promedio_no2")),
+        ("O3",    data.get("promedio_ozono")),
+        ("SO2",   data.get("promedio_so2")),
     ]
 
     # Creamos DF y SOLO quitamos filas sin valor actual
@@ -600,9 +629,8 @@ def update_pollutants_bar(station_id):
     df["pollutant"] = pd.Categorical(df["pollutant"], categories=order, ordered=True)
     df = df.sort_values("pollutant")
 
-    # --- Límite recomendado (NUMÉRICO si existe) ---
-    # IMPORTANTE: el dict debe tener claves EXACTAS: "O3" (letra O, no cero)
-    df["valor_limite"] = df["pollutant"].map(VALOR_LÍMITE)
+    # --- Límite recomendado DINÁMICO (P75 de la estación) ---
+    df["valor_limite"] = df["pollutant"].map(VALOR_LÍMITE_DINAMICO)
 
     # --- Nivel y color ---
     df["level_label"] = df.apply(lambda r: level_for_pollutant(r["pollutant"], r["value"])[0], axis=1)
@@ -708,7 +736,7 @@ def update_map(station_id, window):
     fig = go.Figure()
 
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=poly_lat,
             lon=poly_lon,
             fill="toself",
@@ -719,7 +747,7 @@ def update_map(station_id, window):
     )
 
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=[lat],
             lon=[lon],
             mode="markers",
@@ -730,9 +758,9 @@ def update_map(station_id, window):
     )
 
     fig.update_layout(
-        mapbox_style="open-street-map",
-        mapbox_center={"lat": lat, "lon": lon},
-        mapbox_zoom=choose_zoom(window),
+        map_style="open-street-map",
+        map_center={"lat": lat, "lon": lon},
+        map_zoom=choose_zoom(window),
         margin=dict(l=0, r=0, t=30, b=0),
         title=f"Estación {station_id} | Ventana: {window}",
         showlegend=False,

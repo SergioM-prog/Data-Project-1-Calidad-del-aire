@@ -13,6 +13,7 @@ import secrets
 SERVICES = [
     "ingestion-valencia",
     "telegram-alerts",
+    "frontend",
 ]
 
 
