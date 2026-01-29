@@ -2,8 +2,7 @@ import requests #para llamar a la API (los GETs)
 import pandas as pd # para transformar el JSON en tabla y hacer cálculos
 
 import dash #el freamework web (servidor+callbacks)
-from dash import dcc, html, Input, Output, no_update 
-import plotly.express as px  
+from dash import dcc, html, Input, Output, no_update
 from requests.exceptions import HTTPError
 import plotly.graph_objects as go
 import math
@@ -569,7 +568,6 @@ def render_banner(station_id):
 )
 def update_pollutants_bar(station_id):
     import plotly.graph_objects as go
-    import numpy as np
 
     # --- Figura base (por si hay errores) ---
     def empty_fig():

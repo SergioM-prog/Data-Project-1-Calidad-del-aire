@@ -1,39 +1,4 @@
-# version: 2
-
-# models:
-#   - name: fct_air_quality_daily
-#     description: "Tabla de hechos con promedios diarios de calidad del aire por ciudad y estación."
-#     columns:
-#       - name: fecha_medicion
-#         description: "Fecha de la medición (granularidad diaria)."
-#         data_tests:
-#           - not_null
-#       - name: ciudad
-#         description: "Nombre de la ciudad (Valencia o Madrid)."
-#         data_tests:
-#           - not_null
-#           - accepted_values:
-#               values: ['Valencia', 'Madrid']
-#       - name: promedio_diario_no2
-#         description: "Promedio diario de NO2 calculado a partir de las muestras horarias."
-
-#   - name: fct_air_quality_hourly
-#     description: "Tabla de hechos con promedios horarios. Es la fuente principal para el dashboard de tiempo real."
-#     columns:
-#       - name: fecha_hora
-#         description: "Timestamp truncado a la hora exacta."
-#         data_tests:
-#           - not_null
-#       - name: nombre_estacion
-#         description: "Nombre legible de la estación de medición."
-#         data_tests:
-#           - not_null
-#       - name: promedio_no2
-#         description: "Promedio de NO2 en la hora indicada."
-
-
-        
-        
+       
 version: 2
 
 models:
@@ -89,13 +54,13 @@ models:
       # DIMENSIÓN GEOGRÁFICA
       # ======================================================================
       - name: ciudad
-        description: "Nombre de la ciudad (Valencia o Madrid)"
+        description: "Nombre de la ciudad"
         data_tests:
           - not_null
           - accepted_values:
-              values: ['Valencia', 'Madrid']
+              values: ['Valencia']
               config:
-                severity: warn  # Warning (no error) porque Madrid puede venir vacío
+                severity: error
       
       - name: id_estacion
         description: "ID único de la estación de medición"
@@ -276,7 +241,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ['Valencia', 'Madrid']
+              values: ['Valencia']
       
       - name: id_estacion
         description: "ID único de la estación"
