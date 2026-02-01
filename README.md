@@ -35,30 +35,7 @@ cp .env.example .env  # Si existe, sino crear manualmente
 
 # Editar .env con tus credenciales
 nano .env
-```
 
-**.env** (ejemplo):
-
-```env
-# Base de Datos
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=tu_password_seguro_aqui
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-POSTGRES_DB=air_quality_db
-
-# API Keys (generar con scripts/generate_api_key.py)
-INGESTION_VALENCIA_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxx
-TELEGRAM_ALERTS_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxx
-BARRIER_API_URL=http://backend:8000
-
-# Telegram (opcional - comentar si no se usa)
-BOT_TELEGRAM_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-ID_CANAL_TELEGRAM=-1001234567890
-
-# Grafana
-GF_SECURITY_ADMIN_PASSWORD=tu_password_admin_grafana
-```
 
 #### 3. Generar API Keys
 
